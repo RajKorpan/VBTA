@@ -1,4 +1,5 @@
 import heapq
+import random
 from collections import defaultdict
 
 class Node:
@@ -56,7 +57,7 @@ class AStarNode:
         return self.position == other.position
         
     
-def cbs(start_positions: list, goal_positions: list, map: list):
+def cbs(start_positions: list, goal_positions: list, map: list, occupied_positions: set):
     """Conflict Based Search algorithm to find a solution to a MAPF problem.
     Parameters:
     - start_positions: list, list of tuples representing the start positions of each agent
@@ -76,7 +77,16 @@ def cbs(start_positions: list, goal_positions: list, map: list):
                                 start_pos=start_positions[agent_id],
                                 goal_pos=goal_positions[agent_id],
                                 constraints={},
-                                grid=map)
+                                grid=map,
+                                occupied_positions=occupied_positions)
+    # for r_id in start_positions.keys():
+    #     path = low_level_search(agent_id=r_id,
+    #                             start_pos=start_positions[r_id],
+    #                             goal_pos=goal_positions[r_id],
+    #                             constraints={},
+    #                             grid=map,
+    #                             occupied_positions=occupied_positions)
+        
         # low_level_search will define what the path is
         root_solution[agent_id] = path
         # cost is sum of all paths which gives us the cheapest state which is what we prioritize in the high level search
@@ -125,7 +135,8 @@ def cbs(start_positions: list, goal_positions: list, map: list):
                                                     start_pos=start_positions[agent1], 
                                                     goal_pos=goal_positions[agent1], 
                                                     constraints=child1_constraints, 
-                                                    grid=map)
+                                                    grid=map,
+                                                    occupied_positions=occupied_positions)
 
             if new_path_for_agent1 is not None: # Otherwise no solution found
                 child1_solution[agent1] = new_path_for_agent1
@@ -150,7 +161,8 @@ def cbs(start_positions: list, goal_positions: list, map: list):
                                                     start_pos=start_positions[agent2], 
                                                     goal_pos=goal_positions[agent2],
                                                     constraints=child2_constraints, 
-                                                    grid=map)
+                                                    grid=map,
+                                                    occupied_positions=occupied_positions)
 
             if new_path_for_agent2 is not None: # Otherwise no solution found
                 child2_solution[agent2] = new_path_for_agent2
@@ -243,7 +255,8 @@ def low_level_search(
     start_pos: tuple[int, int],
     goal_pos: tuple[int, int],
     constraints: dict,
-    grid: list
+    grid: list,
+    occupied_positions: set
 ):
     """A* search in a time-expanded manner for a single agent. 
     - agent_id: the ID to look up constraints in constraints[agent_id]
@@ -311,6 +324,9 @@ def low_level_search(
             # check map boundaries
             if not in_bounds(new_row, new_col, grid):
                 # if out of bounds then ignore this direction
+                continue
+
+            if (new_row, new_col) in occupied_positions:
                 continue
 
             # check constraints: is (new_time, (new position)) blocked to the agent this move?
@@ -409,3 +425,27 @@ def load_scenario(scenario_filename):
             goal_col = int(parts[5])
             agents.append((start_row, start_col, goal_row, goal_col))
     return agents
+
+def get_random_free_position(grid, occupied_positions):
+    """
+    Parameters
+    - grid: 2D list of 0/1 cells representing the map free/obstacles
+    - occupied_positions: exisiting agent positions, places we want to consider
+      blocked when choosing a new position
+
+    Returns: a single (row, col) position for one agent,
+            randomly from free cells with value = 0 that are not occupied
+    """
+    free_cells = []
+    # iterate thru entire grid and find the free cells, make a list of them for choosing from
+    for r in range(len(grid)):
+        for c in range(len(grid[0])):
+            if grid[r][c] == 0 and grid[r][c] not in occupied_positions:
+                free_cells.append((r, c))
+
+    if not free_cells:
+       raise ValueError("No free cells available to place a robot!")
+    
+    # randomly sample without replacement
+    chosen = random.sample(free_cells, 1)
+    return chosen
