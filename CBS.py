@@ -57,12 +57,13 @@ class AStarNode:
         return self.position == other.position
         
     
-def cbs(start_positions: list, goal_positions: list, map: list, occupied_positions: set):
+def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positions: set):
     """Conflict Based Search algorithm to find a solution to a MAPF problem.
     Parameters:
-    - start_positions: list, list of tuples representing the start positions of each agent
-    - goal_positions: list, list of tuples representing the goal positions of each agent
+    - start_positions: dict, tuples representing the start positions of each agent
+    - goal_positions: dict, tuples representing the goal positions of each agent
     - map: list, 2D list representing the map where 0 is a free cell and 1 is an obstacle
+    - occupied_positions: set, all occupied positions on map
     Returns:
     - dict, a solution to the MAPF problem in the form of {agent: [(location, location, location, ...)]} and the time steps are implied"""
     open_list = []
@@ -71,9 +72,15 @@ def cbs(start_positions: list, goal_positions: list, map: list, occupied_positio
     root_constraints = defaultdict(list)
     root_solution = {}
     total_cost = 0
+    print(f"CBS START POSITIONS ISSUE: {start_positions}")
+    print(f"CBS GOAL POSITIONS ISSUE: {goal_positions}")
     # Iterate over start positions for all agents and create initial paths using low_level_search()
-    for agent_id in range(len(start_positions)):
+    # for agent_id in range(len(start_positions)):
+    for agent_id in start_positions.keys():
+        print(f"CBS AGENT ID ISSUE: {agent_id}")
         path = low_level_search(agent_id=agent_id,
+                                # by accessing start_positions and goal_positions with agent_id string, order doesnt matter
+                                # for some reason start_positions is always coming in sorted, not sure why, it doesnt happen for goal_positions
                                 start_pos=start_positions[agent_id],
                                 goal_pos=goal_positions[agent_id],
                                 constraints={},
