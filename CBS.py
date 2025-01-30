@@ -108,16 +108,20 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
 
     # any state nodes in the priority queue are searched in this loop 
     while open_list:
+        print(f"CBS ENTER LOOP")
         # pop based on STATE cost priority (state cost is the sum of all paths)
         node = heapq.heappop(open_list)
 
         # search for conflicts in the node
         conflicts = find_conflicts(node.solution)
+        print(f"CBS CONFLICTS FOUND")
         if not conflicts:
+            print(f"CBS NEW SOLUTION FOUND")
             return node.solution # Found conflict free solution
         
         # For each conflict we make 2 new child nodes in the constraint tree
         for conflict in conflicts:
+            print(f"CBS ENTER CONFLICT LOOP")
             # NOTE: location can be a single space for vertex conflict or 2 spaces for edge conflict
             agent1, agent2, time, location = conflict
 
@@ -138,13 +142,15 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
 
             child1_solution = dict(node.solution) # shallow copy existing solution into new child node
             # Replanning step for agent1 path which happens in child1
+            print(f"CBS CHILD NODE 1 CONSTRAINT CREATED")
             new_path_for_agent1 = low_level_search(agent_id=agent1,
                                                     start_pos=start_positions[agent1], 
                                                     goal_pos=goal_positions[agent1], 
                                                     constraints=child1_constraints, 
                                                     grid=map,
                                                     occupied_positions=occupied_positions)
-
+            
+            print(f"CBS CHILD 1 LOW LEVEL SEARCH DONE")
             if new_path_for_agent1 is not None: # Otherwise no solution found
                 child1_solution[agent1] = new_path_for_agent1
                 # Recompute the total cost of path by counting how many steps it took
@@ -164,13 +170,15 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
 
             child2_solution = dict(node.solution) # shallow copy existing solution into new child node
             # Replanning step for agent2 path which happens in child2
+            print(f"CBS CHILD NODE 2 CONSTRAINT CREATED")
             new_path_for_agent2 = low_level_search(agent_id=agent2,
                                                     start_pos=start_positions[agent2], 
                                                     goal_pos=goal_positions[agent2],
                                                     constraints=child2_constraints, 
                                                     grid=map,
                                                     occupied_positions=occupied_positions)
-
+            
+            print(f"CBS CHILD 2 LOW LEVEL SEARCH DONE")
             if new_path_for_agent2 is not None: # Otherwise no solution found
                 child2_solution[agent2] = new_path_for_agent2
                 # Recompute the total cost of path by counting how many steps it took
@@ -287,7 +295,7 @@ def low_level_search(
     open_list = []
     visited = {} # key: (row, col, time), value: minimal g found so far
 
-    # Heuristic function (manhattan dist)
+    # Heuristic function
     def heuristic(pos):
         return abs(pos[0] - goal_pos[0]) + abs(pos[1] - goal_pos[1])
 
@@ -306,7 +314,8 @@ def low_level_search(
     visited[(start_pos[0], start_pos[1], 0)] = 0 # and set g = 0 saying this is the start node
 
     # Directions for neighbor nodes, allow 8 direction movement with staying still (right, left, up, down, stay still, RU, RD, LU, LD)
-    directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    # directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0)]
 
     # search loop
     while open_list:
@@ -343,6 +352,8 @@ def low_level_search(
 
             # compute the cost of g and h
             new_g = current.g + 1
+            # NOTE: is this trying to find the heuristic of untraversable nodes and thats why it doesnt work?
+            # no its checked above
             new_h = heuristic((new_row, new_col))
 
             # WE ONLY PUSH A NEW NODE if we didnt visit (new_row, new_col, new_time) or found a cheaper cost to a node
