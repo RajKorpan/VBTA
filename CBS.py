@@ -55,15 +55,38 @@ class AStarNode:
         Returns:
         - bool: True if self.position == other.position"""
         return self.position == other.position
+    
+
+def build_reservation_table(solution, exclude_agent=None, horizon=1):
+    """
+    Build a time dimension reservation table that maps time steps to sets of positions occupied by agents
+    
+    Parameters:
+    - solution: dict mapping agent IDs to paths (each path is a list of (row, col))
+    - exclude_agent: agent ID to exclude from the table
+    - horizon: how many time steps beyond the end of an agents path to reserve its final cell
+    
+    Returns
+    - A dict mapping time steps to a set of positions
+    """
+    reservation_table = defaultdict(set) # Create the table
+    for agent, path in solution.items(): # iterate thru the solution paths
+        if agent == exclude_agent: # skip excluded agents
+            continue
+        for t, pos in enumerate(path):
+            reservation_table[t].add(pos) # correlate time steps with positions for agents
+        final_pos = path[-1] # reserve the final cell for future time steps (agents wait at end of path until reassigned or removed, we assume stationary until otherwise directed here)
+        for t in range(len(path), len(path) + horizon): # we add a default 1 time step of the stationary position until otherwise directed
+            reservation_table[t].add(final_pos)
+    return reservation_table
         
     
-def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positions: set):
+def cbs(start_positions: dict, goal_positions: dict, map: list):
     """Conflict Based Search algorithm to find a solution to a MAPF problem.
     Parameters:
     - start_positions: dict, tuples representing the start positions of each agent
     - goal_positions: dict, tuples representing the goal positions of each agent
     - map: list, 2D list representing the map where 0 is a free cell and 1 is an obstacle
-    - occupied_positions: set, all occupied positions on map
     Returns:
     - dict, a solution to the MAPF problem in the form of {agent: [(location, location, location, ...)]} and the time steps are implied"""
     open_list = []
@@ -78,14 +101,14 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
     # for agent_id in range(len(start_positions)):
     for agent_id in start_positions.keys():
         print(f"CBS AGENT ID ISSUE: {agent_id}")
+        # Reservation_table is None for this call
         path = low_level_search(agent_id=agent_id,
                                 # by accessing start_positions and goal_positions with agent_id string, order doesnt matter
                                 # for some reason start_positions is always coming in sorted, not sure why, it doesnt happen for goal_positions
                                 start_pos=start_positions[agent_id],
                                 goal_pos=goal_positions[agent_id],
                                 constraints={},
-                                grid=map,
-                                occupied_positions=occupied_positions)
+                                grid=map)
     # for r_id in start_positions.keys():
     #     path = low_level_search(agent_id=r_id,
     #                             start_pos=start_positions[r_id],
@@ -133,14 +156,15 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
                 node.constraints[agent2] = []
 
             # Child 1: constrain agent1 but keep a local copy before creating new node
-            child1_constraints = {}
-            for k, v in node.constraints.items():
-                child1_constraints[k] = v[:] # Shallow copy, for each key copy the entire list in the constraints dict
+            child1_constraints = {k: v[:] for k, v in node.constraints.items()}
+            # for k, v in node.constraints.items():
+            #     child1_constraints[k] = v[:] # Shallow copy, for each key copy the entire list in the constraints dict
                 # print(f"NODE CONSTRAINT DICT: {node.constraints.items()}")
                 # print(f"CHILD1_CONSTRAINTS TYPE: {type(child1_constraints)}")
             child1_constraints[agent1].append((time, location))
-
             child1_solution = dict(node.solution) # shallow copy existing solution into new child node
+
+            reservation_table_agent1 = build_reservation_table(node.solution, exclude_agent=agent1)
             # Replanning step for agent1 path which happens in child1
             print(f"CBS CHILD NODE 1 CONSTRAINT CREATED")
             new_path_for_agent1 = low_level_search(agent_id=agent1,
@@ -148,7 +172,7 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
                                                     goal_pos=goal_positions[agent1], 
                                                     constraints=child1_constraints, 
                                                     grid=map,
-                                                    occupied_positions=occupied_positions)
+                                                    reservation_table=reservation_table_agent1)
             
             print(f"CBS CHILD 1 LOW LEVEL SEARCH DONE")
             if new_path_for_agent1 is not None: # Otherwise no solution found
@@ -161,14 +185,15 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
                 heapq.heappush(open_list, child1)
 
             # Child 2: constrain agent2 as the other possible solution to the conflict between the two agents
-            child2_constraints = {}
-            for k, v in node.constraints.items():
-                child2_constraints[k] = v[:] # Shallow copy, for each key copy the entire list in the constraints dict
+            child2_constraints = {k: v[:] for k, v in node.constraints.items()}
+            # for k, v in node.constraints.items():
+            #     child2_constraints[k] = v[:] # Shallow copy, for each key copy the entire list in the constraints dict
                 # print(f"NODE CONSTRAINT DICT: {node.constraints.items()}")
                 # print(f"CHILD2_CONSTRAINTS TYPE: {type(child2_constraints)}")
             child2_constraints[agent2].append((time, location))
-
             child2_solution = dict(node.solution) # shallow copy existing solution into new child node
+
+            reservation_table_agent2 = build_reservation_table(node.solution, exclude_agent=agent2)
             # Replanning step for agent2 path which happens in child2
             print(f"CBS CHILD NODE 2 CONSTRAINT CREATED")
             new_path_for_agent2 = low_level_search(agent_id=agent2,
@@ -176,7 +201,7 @@ def cbs(start_positions: dict, goal_positions: dict, map: list, occupied_positio
                                                     goal_pos=goal_positions[agent2],
                                                     constraints=child2_constraints, 
                                                     grid=map,
-                                                    occupied_positions=occupied_positions)
+                                                    reservation_table=reservation_table_agent2)
             
             print(f"CBS CHILD 2 LOW LEVEL SEARCH DONE")
             if new_path_for_agent2 is not None: # Otherwise no solution found
@@ -271,7 +296,7 @@ def low_level_search(
     goal_pos: tuple[int, int],
     constraints: dict,
     grid: list,
-    occupied_positions: set
+    reservation_table=None
 ):
     """A* search in a time-expanded manner for a single agent. 
     - agent_id: the ID to look up constraints in constraints[agent_id]
@@ -279,6 +304,7 @@ def low_level_search(
     - goal_pos: (row, col)
     - constraints: dict with constraints[agent_id] = [(time, (row, col)), ...]
     - grid: 2D map (0=free, 1=blocked)
+    - reservation_table: time aware occupied position table that can be used for pathfinding
     Return: List of positions from start to goal, or None if no path found.
     """
     # NOTE: for the constraints, we can say that on that timestep, that node becomes untraversable? that may eliminate the waiting action the agents sometimes choose since they would
@@ -314,8 +340,8 @@ def low_level_search(
     visited[(start_pos[0], start_pos[1], 0)] = 0 # and set g = 0 saying this is the start node
 
     # Directions for neighbor nodes, allow 8 direction movement with staying still (right, left, up, down, stay still, RU, RD, LU, LD)
-    # directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-    directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0)]
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    # directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (0, 0)]
 
     # search loop
     while open_list:
@@ -342,8 +368,15 @@ def low_level_search(
                 # if out of bounds then ignore this direction
                 continue
 
-            if (new_row, new_col) in occupied_positions:
+            # if (new_row, new_col) in occupied_positions:
+            #     continue
+            if grid[new_row][new_col] == 1: # 1 is the occupied cells and 0 is the free cells after map processing
                 continue
+
+            # Check the dynamic positions of agents using the reservation table
+            if reservation_table is not None and new_time in reservation_table: # if res table exists and the next time step is saved in it
+                if (new_row, new_col) in reservation_table[new_time]: # check if the spot is taken already at that time 
+                    continue
 
             # check constraints: is (new_time, (new position)) blocked to the agent this move?
             if (new_time, (new_row, new_col)) in blocked_states:
