@@ -490,8 +490,10 @@ def get_random_free_position(grid, occupied_positions):
     free_cells = []
     # iterate thru entire grid and find the free cells, make a list of them for choosing from
     for r in range(len(grid)):
-        for c in range(len(grid[0])):
-            if grid[r][c] == 0 and grid[r][c] not in occupied_positions:
+        # len(grid[0]) assumes all rows are the same length as the first row
+        # if not, we can iterate through each row's length
+        for c in range(len(grid[r])):
+            if grid[r][c] == 0 and (r, c) not in occupied_positions:
                 free_cells.append((r, c))
 
     if not free_cells:
