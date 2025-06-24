@@ -368,11 +368,11 @@ class CBS(object):
         return plan
 
 
-def main():
+def main(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("param", help="input file containing map and obstacles")
     parser.add_argument("output", help="output file with the schedule")
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     # Read from input file
     with open(args.param, 'r') as param_file:
