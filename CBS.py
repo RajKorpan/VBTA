@@ -461,6 +461,15 @@ def load_map(map_filename):
 
     return grid
 
+def create_obstacle_list(grid):
+    """Create a reusable obstacle list from the grid for fast lookups"""
+    obstacle_list = []
+    for r in range(len(grid)):
+        for c in range(len(grid[r])):
+            if grid[r][c] == 1:
+                obstacle_list.append((r, c)) # store all obstacles in a list
+    return obstacle_list
+
 def load_scenario(scenario_filename):
     """Function to load scenarios from the MAPF benchmark .scen files, not using .scen files for now, just randomly assigning agents"""
     agents = []
