@@ -509,5 +509,6 @@ def get_random_free_position(grid, occupied_positions):
        raise ValueError("No free cells available to place a robot!")
     
     # randomly sample without replacement
-    chosen = random.sample(free_cells, 1)
-    return chosen
+    # chosen = random.sample(free_cells, 1)
+    # return chosen
+    return random.choice(free_cells)  # return a single random free cell from the list
