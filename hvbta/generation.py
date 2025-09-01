@@ -2,9 +2,7 @@ import numpy as np
 import random
 from typing import List
 from CBS import get_random_free_position
-from .config import (MOBILITY_TYPES, ENV_RESISTANCES, SENSORS, MANIPULATORS,
-                     COMM_PROTOCOLS, SPECIAL_FUNCS, SAFETY_FEATS, NAV_CONSTRAINTS,
-                     ENV_CONDITIONS, CAP_REQ_TEMPLATES)
+from . import config as C
 from .models import (CapabilityProfile, TaskDescription, AutonomyLevel, TaskTypes, 
                      Priorities, PerformanceMetrics)
 
@@ -53,20 +51,20 @@ def generate_random_robot_profile(robot_id: str, grid: List[List[int]], occupied
     # Base capabilities
     # I decided everything is going to have at least one random capability to increase suitability scores, the mask only
     # removes up to 3 capability groups but nothing that will cause immediate suitability zeroing
-    mobility_type = random.choice(MOBILITY_TYPES)
+    mobility_type = random.choice(C.MOBILITY_TYPES)
     payload_capacity = round(random.uniform(20.0, 50.0), 1)
     reach = 0.0 if mobility_type in {"aerial"} else round(random.uniform(3.0, 10.0), 1)
     battery_life = round(random.uniform(grid.shape[0], grid.shape[0]*3), 1) # takes into account the size of the map
     size = (round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2))  # (length, width, height)
-    environmental_resistance = _sample(ENV_RESISTANCES, 1)
-    sensors = _sample(SENSORS, 1)  # should not be empty
+    environmental_resistance = _sample(C.ENV_RESISTANCES, 1)
+    sensors = _sample(C.SENSORS, 1)  # should not be empty
     sensor_range = round(random.uniform(20.0, 50.0), 1) if sensors else 0.0
-    manipulators = _sample(MANIPULATORS, 1) # should not be empty
-    communication_protocols = _sample(COMM_PROTOCOLS, 1)  # should not be empty
-    special_functions = _sample(SPECIAL_FUNCS, 1)
-    safety_features = _sample(SAFETY_FEATS, 1)
+    manipulators = _sample(C.MANIPULATORS, 1) # should not be empty
+    communication_protocols = _sample(C.COMM_PROTOCOLS, 1)  # should not be empty
+    special_functions = _sample(C.SPECIAL_FUNCS, 1)
+    safety_features = _sample(C.SAFETY_FEATS, 1)
     processing_power = round(random.uniform(5.0, 15.0), 1)
-    autonomy_level = random.choice(AutonomyLevel).value
+    autonomy_level = random.choice(list(AutonomyLevel)).value
     adaptability = bool(random.getrandbits(1))
 
     # randomly mask 0-3 capability groups but keep types intact for suitability calculations
@@ -105,7 +103,7 @@ def generate_random_robot_profile(robot_id: str, grid: List[List[int]], occupied
     )
 
 def generate_random_task_description(task_id: str, grid: List[List[int]], occupied_locations: set, tasks) -> TaskDescription:
-    task_type = random.choice(TaskTypes).value
+    task_type = random.choice(list(TaskTypes)).value
     # Map of task_type -> (tools_needed list, one required_cap string)
     task_domains = {
         "delivery": (["GPS"], "payload capacity >= 1.0"),
@@ -122,11 +120,11 @@ def generate_random_task_description(task_id: str, grid: List[List[int]], occupi
     required_caps = [req_cap] if req_cap else []
 
     # random tasks can have zero capability constraints to increase suitability scores
-    nav = _sample(NAV_CONSTRAINTS, 0)
-    env = _sample(ENV_CONDITIONS, 0)
-    safety = _sample(SAFETY_FEATS, 0)
-    comm = _sample(COMM_PROTOCOLS, 0)
-    perf = random.choice(PerformanceMetrics).value
+    nav = _sample(C.NAV_CONSTRAINTS, 0)
+    env = _sample(C.ENV_CONDITIONS, 0)
+    safety = _sample(C.SAFETY_FEATS, 0)
+    comm = _sample(C.COMM_PROTOCOLS, 0)
+    perf = random.choice(list(PerformanceMetrics)).value
 
     duration = round(random.uniform(8.0, 20.0), 1)
     difficulty = round(random.uniform(1.0, 10.0), 1)
@@ -136,7 +134,7 @@ def generate_random_task_description(task_id: str, grid: List[List[int]], occupi
         task_id=task_id,
         task_type=task_type,
         objective=f"Perform {task_type} task",
-        priority_level=random.choice(Priorities).value,
+        priority_level=random.choice(list(Priorities)).value,
         reward=reward,
         difficulty=difficulty,
         location=get_unique_task_location(tasks, grid, occupied_locations),
@@ -211,7 +209,7 @@ def generate_random_task_description_strict(task_id: str, grid: List[List[int]],
         environmental_conditions=list(p.get("environmental_conditions", [])),
         dependencies=[],
         tools_needed=list(p.get("tools_needed", [])),
-        communication_requirements=[c for c in p.get("communication_requirements", []) if c in COMM_PROTOCOLS],
+        communication_requirements=[c for c in p.get("communication_requirements", []) if c in C.COMM_PROTOCOLS],
         safety_protocols=list(p.get("safety_protocols", [])),
         performance_metrics=p.get("performance_metric", "completion rate"),
         success_criteria="Task completed within time window",
