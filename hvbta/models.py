@@ -126,6 +126,7 @@ class TaskDescription:
                 f"safety_protocols={self.safety_protocols}, performance_metrics={self.performance_metrics}, "
                 f"success_criteria={self.success_criteria}, time_to_complete={self.time_to_complete}), time_left={self.time_left}) ")
     
+# CATEGORIES
 class AutonomyLevel(Enum):
     TELEOPERATED = "teleoperated"
     SEMI_AUTONOMOUS = "semi-autonomous"

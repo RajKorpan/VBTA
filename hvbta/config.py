@@ -1,3 +1,4 @@
+# FEATURE POOLS FOR RANDOM SAMPLING
 MOBILITY_TYPES = ["wheeled", "tracked", "legged", "aerial", "hovering", "climbing"]
 
 ENV_RESISTANCES = ["weatherproof", "waterproof", "dustproof", "heat-resistant", 
