@@ -2,6 +2,8 @@ import time, numpy as np
 from typing import List, Tuple
 from .base import IAllocator, Assignment
 from .assignments import generate_random_assignments
+from hvbta.models import CapabilityProfile, TaskDescription
+from hvbta.suitability import calculate_total_suitability, check_zero_suitability, calculate_suitability_matrix
 
 def rank_assignments_range(assignments: List[List[Tuple[int, int]]], suitability_matrix: List[List[float]]) -> Tuple[List[float], List[int]]:
     """
@@ -252,38 +254,157 @@ def rank_assignments_condorcet_method(assignments: List[List[Tuple[int, int]]], 
 
     return pairwise_wins, ranked_assignments
 
-class VotingAllocator(IAllocator):
-    def __init__(self, method: str = "range", k: int = 50, seed: int = None, threshold: float = 0.5, total_votes: int = 10):
-        self.method = method
-        self.k = k
-        self.seed = seed
-        self.threshold = threshold
-        self.total_votes = total_votes
+def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDescription], suitability_matrix: np.ndarray, num_candidates: int, voting_method: str):
+    """
+    Assigns tasks to robots using random assignment and ranks the assignments using the specified voting method.
     
-    def assign(self, suitability_matrix: np.ndarray) -> Tuple[Assignment, float, float]:
-        start = time.perf_counter_ns()
-        candidates = generate_random_assignments(suitability_matrix, self.k, self.seed)
-        totals = [float(sum(suitability_matrix[i, j] for i, j in assignment)) for assignment in candidates]
+    Parameters:
+        robots: List of robot profiles.
+        tasks: List of task descriptions.
+        suitability_matrix: A 2D numpy array with suitability scores for each robot-task pair.
+        num_candidates: Number of candidate assignments to generate.
+        voting_method: The name of the voting function.
+    
+    Returns:
+        (best_assignment, best_score, length): The best assignment, its suitability score, and the time taken for the voting process.
+    """
+    num_robots = len(robots)
+    num_tasks = len(tasks)
+    
+    random_assignments = generate_random_assignments(num_robots, num_tasks, num_candidates)
+    # def map_with_jv(S_mat):
+    #     pairs = jv_task_allocation(S_mat)  # adjust to match your JV return
+    #     return pairs
 
-        # call the appropriate voting method
-        if self.method == "range":
-            score, ranked_assignments = rank_assignments_range(candidates, suitability_matrix)
-        elif self.method == "borda":
-            score, ranked_assignments = rank_assignments_borda(candidates, suitability_matrix)
-        elif self.method == "approval":
-            score, ranked_assignments = rank_assignments_approval(candidates, suitability_matrix, self.threshold)
-        elif self.method == "majority_judgment":
-            score, ranked_assignments = rank_assignments_majority_judgment(candidates, suitability_matrix)
-        elif self.method == "cumulative":
-            score, ranked_assignments = rank_assignments_cumulative_voting(candidates, suitability_matrix, self.total_votes)
-        elif self.method == "condorcet":
-            score, ranked_assignments = rank_assignments_condorcet_method(candidates, suitability_matrix)
-        else:
-            raise ValueError(f"Unknown voting method: {self.method}")
+    # candidate_assignments = generate_candidates_perturb_and_map(
+    #     S=suitability_matrix,
+    #     K=num_candidates,
+    #     solve_fn=map_with_jv,
+    #     noise="gumbel",
+    #     scale=0.10,
+    #     anneal=True,
+    #     seed=None
+    # )
+    
+    start = time.perf_counter_ns()
+    total_scores, assignment_ranking = globals()[voting_method](random_assignments, suitability_matrix)
+    end = time.perf_counter_ns()
+    length = (end - start) / 1000.0
 
-        end = time.perf_counter_ns()
-        elapsed = end - start
+    best_ranking = 0
+    while(check_zero_suitability(random_assignments[assignment_ranking[best_ranking]][0], suitability_matrix) and best_ranking < len(assignment_ranking)-1):
+        best_ranking += 1
+    if best_ranking == num_candidates-1:
+        best_ranking = 0
 
-        # Select the best assignment based on the chosen voting method
-        best_assignment = ranked_assignments[0] if ranked_assignments else None
-        return best_assignment, score, elapsed
+    best_assignment = random_assignments[assignment_ranking[best_ranking]]
+    filtered_best_assignments = ([],[],[])
+    for robot_id, task_id in best_assignment[0]:
+            if suitability_matrix[robot_id][task_id] == 0:
+                filtered_best_assignments[1].append(robot_id)
+                filtered_best_assignments[2].append(task_id)
+            else:
+                filtered_best_assignments[0].append((robot_id, task_id))
+    print(f"Best assignment in voting {filtered_best_assignments}")
+
+    best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)
+
+    return filtered_best_assignments, best_score, length
+
+def reassign_robots_to_tasks(
+        robots: List[CapabilityProfile], 
+        tasks: List[TaskDescription], 
+        num_candidates: int, 
+        voting_method: str, 
+        suitability_method: str, 
+        unassigned_robots: List[str], 
+        unassigned_tasks: List[str], 
+        start_positions: dict, 
+        goal_positions: dict,
+        inertia_threshold: float = 0.1):
+    """
+    Reassigns unassigned robots to unassigned tasks using a voting method.
+    Parameters:
+        robots: List of all robot profiles.
+        tasks: List of all task descriptions.
+        num_candidates: Number of candidate assignments to generate.
+        voting_method: The name of the voting function to use for ranking assignments.
+        suitability_method: The name of the suitability evaluation function.
+        unassigned_robots: List of unassigned robot IDs.
+        unassigned_tasks: List of unassigned task IDs.
+        start_positions: Dictionary mapping robot IDs to their start positions.
+        goal_positions: Dictionary mapping robot IDs to their goal positions.
+        Inertia threshold: minimum improvement in suitability required to steal an already‐assigned task.
+
+    Returns:
+        return_assignments: Dictionary mapping robot IDs to assigned task IDs.
+        unassigned_robots: List of unassigned robot IDs after reassignment.
+        unassigned_tasks: List of unassigned task IDs after reassignment.
+        score: Total suitability score of the best assignment.
+        length: Time taken for the voting process in microseconds.
+    """
+    urobots = [robot for robot in robots if not robot.assigned]
+    utasks = [task for task in tasks if not task.assigned]
+
+    suitability_matrix = calculate_suitability_matrix(urobots, utasks, suitability_method)
+    output, score, length = assign_tasks_with_voting(
+        urobots, utasks, suitability_matrix, num_candidates, voting_method)
+
+    # this assigned_pairs only contains the unassigned robots and tasks, I may have to pass in the actual assigned_pairs to update it
+    assigned_pairs = output[0] # list of tuples
+    return_assignments = {}
+    unassigned_robots = [urobots[i].robot_id for i in output[1]]
+    unassigned_tasks = [utasks[j].task_id for j in output[2]]
+    for (robot_idx, task_idx) in assigned_pairs:
+        # NOTE: THIS IS RIGHT, indexes into the filtered list of assigned pairs with the unassigned robots and tasks
+        # print(f"UROBOT: {urobots[robot_idx].robot_id} | UTASK: {utasks[task_idx].task_id}")
+        r = urobots[robot_idx]
+        t = utasks[task_idx]
+        r.current_task = t
+        r.tasks_attempted += 1
+        t.assigned_robot = r
+        r.assigned = True
+        t.assigned = True
+        # update start and goal positions when robots are assigned
+        start_positions[r.robot_id] = r.location
+        goal_positions[r.robot_id] = t.location
+        return_assignments[r.robot_id] = t.task_id
+        # return_assignments.update({urobots[robot_idx].robot_id : utasks[task_idx].task_id})
+
+    # Check for stealing tasks from already assigned robots
+    free_robots = [r for r in robots if not r.assigned]
+    for task in tasks:
+        current = task.assigned_robot
+        if current is None:
+            continue
+        current_suitability = globals()[suitability_method](current, task)
+        print(f"Better suitability in reassigning: {current_suitability}")
+        # find the best free robot for this task
+        best, best_suit = None, current_suitability
+        for r in free_robots:
+            s = globals()[suitability_method](r, task)
+            if s > best_suit:
+                print(f"Better suitability in reassigning: {s}")
+                best, best_suit = r, s
+        # Inertia check: if the best free robot's suitability is not significantly better, skip stealing
+        if best and (best_suit - current_suitability) >= inertia_threshold:
+            # unassign the current robot from the task
+            current.current_task = None
+            current.assigned = False
+            if current.robot_id not in unassigned_robots:
+                unassigned_robots.append(current.robot_id)
+            # update the task's assigned robot
+            best.current_task = task
+            best.assigned = True
+            best.tasks_attempted += 1
+            task.assigned_robot = best
+            start_positions[best.robot_id] = best.location
+            goal_positions[best.robot_id] = task.location
+            # remove from free list and unassigned robots
+            free_robots.remove(best)
+            if best.robot_id in unassigned_robots:
+                unassigned_robots.remove(best.robot_id)
+    
+    print(f"Reassign Score: {score}, Reassign Length: {length}")
+
+    return return_assignments, unassigned_robots, unassigned_tasks, score, length

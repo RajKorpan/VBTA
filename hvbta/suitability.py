@@ -1143,3 +1143,4 @@ def calculate_suitability_matrix(robots: List[CapabilityProfile], tasks: List[Ta
             suitability_matrix[i, j] = scorer(robot, task)
             
     return suitability_matrix
+
