@@ -168,7 +168,7 @@ def ilp_task_allocation(suitability_matrix: List[List[float]]) -> List[Tuple[int
 def assign_tasks_with_method(
     allocation_method: Callable[[List[List[float]]], List[Tuple[int, int]]],
     suitability_matrix: List[List[float]]
-):
+) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
     """
     Assigns tasks using a specified allocation method and returns the allocation details.
     
@@ -217,13 +217,13 @@ def reassign_robots_to_tasks_with_method(
         tasks: List[TaskDescription], 
         num_candidates: int, 
         voting_method: str, 
-        suitability_method: str, 
+        suitability_method: Callable, 
         unassigned_robots: List[str], 
         unassigned_tasks: List[str], 
         allocation_method: Callable[[List[List[float]]], List[Tuple[int, int]]], 
         start_positions: dict, 
         goal_positions: dict,
-        inertia_threshold: float = 0.1):
+        inertia_threshold: float = 0.1) -> Tuple[dict, List[str], List[str], float, float]:
     """
     Reassigns unassigned robots to unassigned tasks using a specified allocation method.
     Parameters:

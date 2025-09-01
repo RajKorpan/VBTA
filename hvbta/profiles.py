@@ -115,7 +115,7 @@ STRICT_ROBOT_PROFILES = [
         "safety_features": ["fall detection", "collision avoidance", "emergency stop"],
         "sensor_range": 12.0,
         "processing_power": 7.0,
-        "autonomy_level": "autonomous",
+        "autonomy_level": "fully autonomous",
         "payload_capacity": 20.0,  
         "reach": 10.0,  
         "battery_life": 65.0,

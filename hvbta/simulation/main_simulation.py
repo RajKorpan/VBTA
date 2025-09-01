@@ -4,11 +4,11 @@ import random
 import numpy as np
 from typing import List
 import copy
-from pathfinding.Final_CBS import CBS, Environment
+from hvbta.pathfinding.Final_CBS import CBS, Environment
 from hvbta.simulation.timestep import simulate_time_step
-from hvbta.allocators.voting import assign_tasks_with_voting, reassign_robots_to_tasks
-from hvbta.suitability import calculate_suitability_matrix
-from pathfinding.CBS import load_map, create_obstacle_list, build_cbs_agents
+from hvbta.allocators.voting import assign_tasks_with_voting, reassign_robots_to_tasks, rank_assignments_range
+from hvbta.suitability import calculate_suitability_matrix, evaluate_suitability_new
+from hvbta.pathfinding.CBS import load_map, create_obstacle_list, build_cbs_agents
 from hvbta.allocators.misc_assignment import add_new_tasks_strict, add_new_robots_strict, remove_random_robots
 from hvbta.generation import generate_random_robot_profile_strict, generate_random_task_description_strict
 from hvbta.models import CapabilityProfile, TaskDescription
@@ -318,10 +318,10 @@ def benchmark_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]
 
 if __name__ == "__main__":
 #     voting_methods = ["rank_assignments_borda", "rank_assignments_approval", "rank_assignments_majority_judgment", "rank_assignments_cumulative_voting", "rank_assignments_condorcet_method", "rank_assignments_range"]
-    voting_methods = ["rank_assignments_range"]
+    voting_methods = [rank_assignments_range]
 #     suitability_methods = ["evaluate_suitability_loose", "evaluate_suitability_strict", "evaluate_suitability_distance", "evaluate_suitability_priority"]
     # suitability_methods = ["evaluate_suitability_loose","evaluate_suitability_distance"]
-    suitability_methods = ["evaluate_suitability_new"]
+    suitability_methods = [evaluate_suitability_new]
     # suitability_methods = ["evaluate_suitability_distance"]
     max_time_steps = 100
     add_tasks = False

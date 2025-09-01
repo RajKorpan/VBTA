@@ -1,6 +1,5 @@
 import time, numpy as np
-from typing import List, Tuple
-from .base import IAllocator, Assignment
+from typing import List, Tuple, Callable
 from .assignments import generate_random_assignments
 from hvbta.models import CapabilityProfile, TaskDescription
 from hvbta.suitability import calculate_total_suitability, check_zero_suitability, calculate_suitability_matrix
@@ -254,7 +253,7 @@ def rank_assignments_condorcet_method(assignments: List[List[Tuple[int, int]]], 
 
     return pairwise_wins, ranked_assignments
 
-def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDescription], suitability_matrix: np.ndarray, num_candidates: int, voting_method: str):
+def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDescription], suitability_matrix: np.ndarray, num_candidates: int, voting_method: Callable) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
     """
     Assigns tasks to robots using random assignment and ranks the assignments using the specified voting method.
     
@@ -287,7 +286,7 @@ def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDe
     # )
     
     start = time.perf_counter_ns()
-    total_scores, assignment_ranking = globals()[voting_method](random_assignments, suitability_matrix)
+    total_scores, assignment_ranking = voting_method(random_assignments, suitability_matrix)
     end = time.perf_counter_ns()
     length = (end - start) / 1000.0
 
@@ -315,8 +314,8 @@ def reassign_robots_to_tasks(
         robots: List[CapabilityProfile], 
         tasks: List[TaskDescription], 
         num_candidates: int, 
-        voting_method: str, 
-        suitability_method: str, 
+        voting_method: Callable, 
+        suitability_method: Callable, 
         unassigned_robots: List[str], 
         unassigned_tasks: List[str], 
         start_positions: dict, 
@@ -377,12 +376,12 @@ def reassign_robots_to_tasks(
         current = task.assigned_robot
         if current is None:
             continue
-        current_suitability = globals()[suitability_method](current, task)
+        current_suitability = suitability_method(current, task)
         print(f"Better suitability in reassigning: {current_suitability}")
         # find the best free robot for this task
         best, best_suit = None, current_suitability
         for r in free_robots:
-            s = globals()[suitability_method](r, task)
+            s = suitability_method(r, task)
             if s > best_suit:
                 print(f"Better suitability in reassigning: {s}")
                 best, best_suit = r, s

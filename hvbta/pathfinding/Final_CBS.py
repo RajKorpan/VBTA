@@ -6,7 +6,7 @@ from math import fabs
 from itertools import combinations
 from copy import deepcopy
 
-from pathfinding.a_star import AStar
+from hvbta.pathfinding.a_star import AStar
 
 class Location(object):
     """Location class, represents agent location in environment as an (x, y) coordinate tuple"""
