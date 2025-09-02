@@ -1,3 +1,13 @@
+# Running the simulation
+
+### from the main directory:
+Run:
+```
+python -m hvbta.simulation.main_simulation
+```
+
+# Running CBS seperately
+
 Run:
 ```
 python3 Final_CBS.py input.yaml output.yaml
