@@ -126,7 +126,7 @@ def generate_random_task_description(task_id: str, grid: List[List[int]], occupi
     comm = _sample(C.COMM_PROTOCOLS, 0)
     perf = random.choice(list(PerformanceMetrics)).value
 
-    duration = round(random.uniform(8.0, 20.0), 1)
+    duration = round(random.uniform(3.0, 7.0), 1)
     difficulty = round(random.uniform(1.0, 10.0), 1)
     reward = round(random.uniform(1.0, 10.0), 1)
 

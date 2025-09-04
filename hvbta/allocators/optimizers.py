@@ -276,11 +276,11 @@ def reassign_robots_to_tasks_with_method(
         current = task.assigned_robot
         if current is None:
             continue
-        current_suitability = globals()[suitability_method](current, task)
+        current_suitability = suitability_method(current, task)
         # find the best free robot for this task
         best, best_suit = None, current_suitability
         for r in free_robots:
-            s = globals()[suitability_method](r, task)
+            s = suitability_method(r, task)
             if s > best_suit:
                 best, best_suit = r, s
         # Inertia check: if the best free robot's suitability is not significantly better, skip stealing

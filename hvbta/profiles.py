@@ -137,7 +137,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "proximity sensor"], ["gripper"]],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
-        "duration": random.randint(10, 15),
+        "duration": random.randint(3, 6),
         "performance_metric": "safety compliance"
     },
     {
@@ -151,7 +151,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "proximity sensor"], ["hydraulic bucket"]],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
-        "duration": random.randint(10, 15),
+        "duration": random.randint(3, 6),
         "performance_metric": "safety compliance"
     },
     {
@@ -165,7 +165,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "ultrasonic", "proximity sensor"], _sample(["gripper"], 1, 1)],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
-        "duration": random.randint(10, 15),
+        "duration": random.randint(3, 6),
         "performance_metric": "safety compliance"
     },
     {
@@ -179,7 +179,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "ultrasonic", "proximity sensor"], ["hydraulic bucket"]],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
-        "duration": random.randint(10, 15),
+        "duration": random.randint(3, 6),
         "performance_metric": "safety compliance"
     },
     {
@@ -193,7 +193,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["camera", "proximity sensor", "GPS"], ["gripper"]],
         "communication_requirements": ["Wi-Fi", "4G"],
         "safety_protocols": ["obstacle detection", "emergency stop"],
-        "duration": random.randint(5, 10),
+        "duration": random.randint(2, 5),
         "performance_metric": "time taken",
     },
     {
@@ -207,7 +207,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["camera", "infrared", "dispenser"], ["gripper", "drill", "welding tool"]],
         "communication_requirements": ["Wi-Fi", "Radio"],
         "safety_protocols": ["collision avoidance", "emergency stop"],
-        "duration": random.randint(8, 15),
+        "duration": random.randint(4, 7),
         "performance_metric": "accuracy",
     },
     {
@@ -221,7 +221,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "proximity sensor"], ["hydraulic bucket"]],
         "communication_requirements": ["Radio"],
         "safety_protocols": ["overload protection", "obstacle detection"],
-        "duration": random.randint(10, 18),
+        "duration": random.randint(5, 7),
         "performance_metric": "safety compliance"
     },
     {
@@ -235,7 +235,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["camera", "GPS", "proximity sensor", "ultrasonic"], ["cable hoist", "gripper"]],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "emergency stop"],
-        "duration": random.randint(3, 8),
+        "duration": random.randint(3, 5),
         "performance_metric": "safety compliance"
     },
     {
@@ -249,7 +249,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "proximity sensor"], ["gripper", "dispenser"]],
         "communication_requirements": ["Wi-Fi"],
         "safety_protocols": ["collision avoidance", "overheat protection"],
-        "duration": random.randint(8, 20),
+        "duration": random.randint(6, 10),
         "performance_metric": "accuracy"
     },
     {
@@ -263,7 +263,7 @@ STRICT_TASK_PROFILES = [
         "tools_needed": [["LiDAR", "camera", "ultrasonic", "proximity sensor"], ["gripper", "drill"]],
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
-        "duration": random.randint(10, 15),
+        "duration": random.randint(3, 6),
         "performance_metric": "safety compliance"
     }
 ]

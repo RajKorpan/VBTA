@@ -87,7 +87,7 @@ def simulate_time_step(
                     rid = robot.robot_id
                     if rid not in unassigned_robots:
                         unassigned_robots.append(rid)
-                    print(f"Robot {robot.robot_id} completed task {task.task_id}")
+                    print(f"ROBOT {robot.robot_id} COMPLETED TASK {task.task_id}")
                     tasks_completed += 1
                     try:
                         tasks.remove(task)
