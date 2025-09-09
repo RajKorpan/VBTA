@@ -291,6 +291,7 @@ def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDe
     length = (end - start) / 1000.0
 
     best_ranking = 0
+    # check for zero suitability in the best assignment and move to the next best if so
     while(check_zero_suitability(random_assignments[assignment_ranking[best_ranking]][0], suitability_matrix) and best_ranking < len(assignment_ranking)-1):
         best_ranking += 1
     if best_ranking == num_candidates-1:
@@ -309,6 +310,69 @@ def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDe
     best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)
 
     return filtered_best_assignments, best_score, length
+
+def assign_tasks_randomly(robots: List[CapabilityProfile], tasks: List[TaskDescription], suitability_matrix: np.ndarray, num_candidates: int) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
+    """
+    Assigns tasks to robots using random assignment and random assignments.
+    for use with the all-zero suitability matrix case.
+    
+    Parameters:
+        robots: List of robot profiles.
+        tasks: List of task descriptions.
+        suitability_matrix: A 2D numpy array with suitability scores for each robot-task pair.
+        num_candidates: Number of candidate assignments to generate.
+    
+    Returns:
+        (best_assignment, best_score, length): The best assignment, its suitability score, and the time taken for the voting process.
+    """
+    num_robots = len(robots)
+    num_tasks = len(tasks)
+    
+    random_assignments = generate_random_assignments(num_robots, num_tasks, num_candidates)
+    
+    start = time.perf_counter_ns()
+    # total_scores, assignment_ranking = voting_method(random_assignments, suitability_matrix)
+    # assignment ranking is a list of integers usually from 0 to num_candidates-1 that ranks the assignments
+    # but here we just pick a random assignment since they are all equally bad
+    k = np.random.randint(0, num_candidates)
+    pairs, unr_idx, unt_idx = random_assignments[k] 
+    # final_assignment = random_assignments[np.random.randint(0, num_candidates)][0]
+    total_scores, assignment_ranking = 0.0, None
+    end = time.perf_counter_ns()
+    length = (end - start) / 1000.0
+
+    # best_ranking = 0
+    # # check for zero suitability in the best assignment and move to the next best if so
+    # while(check_zero_suitability(random_assignments[assignment_ranking[best_ranking]][0], suitability_matrix) and best_ranking < len(assignment_ranking)-1):
+    #     best_ranking += 1
+    # if best_ranking == num_candidates-1:
+    #     best_ranking = 0
+
+    # best_assignment = random_assignments[assignment_ranking[best_ranking]]
+    # filtered_best_assignments = ([],[],[])
+    assigned_pairs = []
+    unassigned_robots = []
+    unassigned_tasks = []
+
+    for robot_id, task_id in pairs:
+        assigned_pairs.append((robot_id, task_id))
+
+    if unr_idx is None or unt_idx is None:
+        assigned_r = {r for r, _ in assigned_pairs}
+        assigned_t = {t for _, t in assigned_pairs}
+        unassigned_robots = [i for i in range(num_robots) if i not in assigned_r]
+        unassigned_tasks = [j for j in range(num_tasks) if j not in assigned_t]
+    else:
+        unassigned_robots = list(unr_idx)
+        unassigned_tasks = list(unt_idx)
+
+    filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
+
+    print(f"Best assignment in voting {filtered_best_assignments}")
+
+    # best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)
+
+    return filtered_best_assignments, total_scores, length
 
 def reassign_robots_to_tasks(
         robots: List[CapabilityProfile], 

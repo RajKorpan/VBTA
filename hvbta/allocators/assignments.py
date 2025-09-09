@@ -3,7 +3,8 @@ from typing import Callable, List, Tuple, Optional
 import random
 from itertools import permutations, combinations
 
-def generate_random_assignments(num_robots: int, num_tasks: int, num_assignments: int = 5) -> List[List[Tuple[Optional[int], Optional[int]]]]:
+# old hint List[List[Tuple[Optional[int], Optional[int]]]]
+def generate_random_assignments(num_robots: int, num_tasks: int, num_assignments: int = 5) -> List[Tuple[List[Tuple[Optional[int], Optional[int]]], List[int], List[int]]]:
     """
     Generates a list of random assignments of robots to tasks.
     Each assignment is a list of (robot, task) pairs, where some robots or tasks may be unassigned.
