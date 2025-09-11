@@ -4,6 +4,7 @@ from typing import List, Tuple, Callable
 import pulp
 import time
 from hvbta.models import CapabilityProfile, TaskDescription
+from .assignments import generate_random_assignments
 from hvbta.suitability import calculate_suitability_matrix, calculate_total_suitability
 
 def jv_task_allocation(matrix):
@@ -211,6 +212,70 @@ def assign_tasks_with_method(
     #**print(f"Time taken for allocation: {allocation_time:.2f} microseconds")
     
     return (assignment, unassigned_robots, unassigned_tasks), total_score, allocation_time
+
+def assign_tasks_with_method_randomly(
+    allocation_method: Callable[[List[List[float]]], List[Tuple[int, int]]],
+    suitability_matrix: List[List[float]],
+    num_candidates: int,
+) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
+    """
+    Assigns tasks randomly and returns the allocation details.
+    
+    Parameters:
+        allocation_method: The function used for task allocation (e.g., `cbba_task_allocation`, `ssia_task_allocation`, `ilp_task_allocation`).
+        suitability_matrix: A 2D list where the element at [i][j] represents the suitability score of robot i for task j.
+    
+    Returns:
+        (assignment, unassigned_robots, unassigned_tasks, total_score, allocation_time): A tuple containing:
+      1. A list of assigned (robot, task) pairs.
+      2. A list of unassigned robot indices.
+      3. A list of unassigned task indices.
+      4. The total suitability score of the assignment.
+      5. The time taken for the allocation (in microseconds).
+    """
+    num_robots = len(suitability_matrix)
+    num_tasks = len(suitability_matrix[0])
+
+    random_assignments = generate_random_assignments(num_robots, num_tasks, num_candidates)
+    
+    # Start timing
+    start_time = time.perf_counter_ns()
+    
+    k = np.random.randint(0, num_candidates)
+    final_pairs, final_unr_idx, final_unt_idx = [], [], []
+    for i in range(num_candidates):
+        pairs, unr_idx, unt_idx = random_assignments[i]
+        if len(pairs) > len(final_pairs):
+            final_pairs, final_unr_idx, final_unt_idx = pairs, unr_idx, unt_idx
+    
+    # End timing
+    end_time = time.perf_counter_ns()
+    allocation_time = (end_time - start_time) / 1000.0  # Convert nanoseconds to microseconds
+    
+    total_score = 0.0
+    
+    assigned_pairs = []
+    unassigned_robots = []
+    unassigned_tasks = []
+
+    print(f"\n\n\n\nPAIRS: {final_pairs} \n\n\n\n UNR: {final_unr_idx} \n\n\n\n UNT: {final_unt_idx}\n\n\n\n")
+    for robot_id, task_id in final_pairs:
+        assigned_pairs.append((robot_id, task_id))
+
+    if final_unr_idx is None or final_unt_idx is None:
+        assigned_r = {r for r, _ in assigned_pairs}
+        assigned_t = {t for _, t in assigned_pairs}
+        unassigned_robots = [i for i in range(num_robots) if i not in assigned_r]
+        unassigned_tasks = [j for j in range(num_tasks) if j not in assigned_t]
+    else:
+        unassigned_robots = list(final_unr_idx)
+        unassigned_tasks = list(final_unt_idx)
+
+    filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
+
+    print(f"Best assignment in voting: {filtered_best_assignments}")
+    
+    return filtered_best_assignments, total_score, allocation_time
 
 def reassign_robots_to_tasks_with_method(
         robots: List[CapabilityProfile], 

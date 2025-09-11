@@ -311,7 +311,11 @@ def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDe
 
     return filtered_best_assignments, best_score, length
 
-def assign_tasks_randomly(robots: List[CapabilityProfile], tasks: List[TaskDescription], suitability_matrix: np.ndarray, num_candidates: int) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
+def assign_tasks_randomly(
+        robots: List[CapabilityProfile], 
+        tasks: List[TaskDescription], 
+        suitability_matrix: np.ndarray, num_candidates: int
+    ) -> Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
     """
     Assigns tasks to robots using random assignment and random assignments.
     for use with the all-zero suitability matrix case.
@@ -335,36 +339,33 @@ def assign_tasks_randomly(robots: List[CapabilityProfile], tasks: List[TaskDescr
     # assignment ranking is a list of integers usually from 0 to num_candidates-1 that ranks the assignments
     # but here we just pick a random assignment since they are all equally bad
     k = np.random.randint(0, num_candidates)
-    pairs, unr_idx, unt_idx = random_assignments[k] 
-    # final_assignment = random_assignments[np.random.randint(0, num_candidates)][0]
-    total_scores, assignment_ranking = 0.0, None
+    final_pairs, final_unr_idx, final_unt_idx = [], [], []
+    for i in range(num_candidates):
+        pairs, unr_idx, unt_idx = random_assignments[i]
+        if len(pairs) > len(final_pairs):
+            final_pairs, final_unr_idx, final_unt_idx = pairs, unr_idx, unt_idx
+    
     end = time.perf_counter_ns()
     length = (end - start) / 1000.0
-
-    # best_ranking = 0
-    # # check for zero suitability in the best assignment and move to the next best if so
-    # while(check_zero_suitability(random_assignments[assignment_ranking[best_ranking]][0], suitability_matrix) and best_ranking < len(assignment_ranking)-1):
-    #     best_ranking += 1
-    # if best_ranking == num_candidates-1:
-    #     best_ranking = 0
-
-    # best_assignment = random_assignments[assignment_ranking[best_ranking]]
-    # filtered_best_assignments = ([],[],[])
+    total_scores = 0.0
+ 
     assigned_pairs = []
     unassigned_robots = []
     unassigned_tasks = []
 
-    for robot_id, task_id in pairs:
+    print(f"\n\n\n\nPAIRS: {final_pairs} \n\n\n\n UNR: {final_unr_idx} \n\n\n\n UNT: {final_unt_idx}\n\n\n\n")
+
+    for robot_id, task_id in final_pairs:
         assigned_pairs.append((robot_id, task_id))
 
-    if unr_idx is None or unt_idx is None:
+    if final_unr_idx is None or final_unt_idx is None:
         assigned_r = {r for r, _ in assigned_pairs}
         assigned_t = {t for _, t in assigned_pairs}
         unassigned_robots = [i for i in range(num_robots) if i not in assigned_r]
         unassigned_tasks = [j for j in range(num_tasks) if j not in assigned_t]
     else:
-        unassigned_robots = list(unr_idx)
-        unassigned_tasks = list(unt_idx)
+        unassigned_robots = list(final_unr_idx)
+        unassigned_tasks = list(final_unt_idx)
 
     filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
 
