@@ -3,8 +3,10 @@
 AStar search
 
 author: Ashwin Bose (@atb033)
+Edited by: Daniel Weiner (@danwein8)
 
 """
+import heapq
 
 class AStar():
     def __init__(self, env):
@@ -16,57 +18,63 @@ class AStar():
         self.get_neighbors = env.get_neighbors
 
     def reconstruct_path(self, came_from, current):
-        total_path = [current]
-        while current in came_from.keys():
+        path = [current]
+        while current in came_from:
             current = came_from[current]
-            total_path.append(current)
-        return total_path[::-1]
+            path.append(current)
+        return path[::-1]  # Return reversed path
 
     def search(self, agent_name):
         """
         low level search 
         """
-        initial_state = self.agent_dict[agent_name]["start"]
-        step_cost = 1
-        
-        closed_set = set()
-        open_set = {initial_state}
+        s0 = self.agent_dict[agent_name]["start"]
+        h0 = self.admissible_heuristic(s0, agent_name)
+
+        # Simple horizon: L1 distance + buffer
+        goal = self.agent_dict[agent_name]["goal"]
+        dist = abs(s0.location.x - goal.location.x) + abs(s0.location.y - goal.location.y)
+        T_max = int(dist + max(20, dist * 2))  # tune if needed
+
+        open_heap = []
+        heapq.heappush(open_heap, (h0, 0, s0))  # (f, g, state)
 
         came_from = {}
+        g_score = {s0: 0}
+        # Best arrival time seen for each (x,y)
+        best_time = {(s0.location.x, s0.location.y): 0}
 
-        g_score = {} 
-        g_score[initial_state] = 0
+        closed = set()
 
-        f_score = {} 
-
-        f_score[initial_state] = self.admissible_heuristic(initial_state, agent_name)
-
-        while open_set:
-            temp_dict = {open_item:f_score.setdefault(open_item, float("inf")) for open_item in open_set}
-            current = min(temp_dict, key=temp_dict.get)
+        while open_heap:
+            f, g, current = heapq.heappop(open_heap)
 
             if self.is_at_goal(current, agent_name):
                 return self.reconstruct_path(came_from, current)
 
-            open_set -= {current}
-            closed_set |= {current}
+            if current in closed:
+                continue
+            closed.add(current)
 
-            neighbor_list = self.get_neighbors(current)
-
-            for neighbor in neighbor_list:
-                if neighbor in closed_set:
-                    continue
-                
-                tentative_g_score = g_score.setdefault(current, float("inf")) + step_cost
-
-                if neighbor not in open_set:
-                    open_set |= {neighbor}
-                elif tentative_g_score >= g_score.setdefault(neighbor, float("inf")):
+            for nbr in self.get_neighbors(current):
+                # prune by horizon
+                if nbr.time > T_max:
                     continue
 
-                came_from[neighbor] = current
+                # dominance pruning by earliest time at cell
+                key = (nbr.location.x, nbr.location.y)
+                best_arrival = best_time.get(key)
+                if best_arrival is not None and best_arrival <= nbr.time:
+                    continue
 
-                g_score[neighbor] = tentative_g_score
-                f_score[neighbor] = g_score[neighbor] + self.admissible_heuristic(neighbor, agent_name)
+                tentative_g = g + 1
+                prev = g_score.get(nbr, float("inf"))
+                if tentative_g < prev:
+                    came_from[nbr] = current
+                    g_score[nbr] = tentative_g
+                    best_time[key] = nbr.time
+                    h = self.admissible_heuristic(nbr, agent_name)
+                    heapq.heappush(open_heap, (tentative_g + h, tentative_g, nbr))
+
         return False
 

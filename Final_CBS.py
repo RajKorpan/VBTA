@@ -36,7 +36,7 @@ class State(object):
     def __eq__(self, other):
         return self.time == other.time and self.location == other.location
     def __hash__(self):
-        return hash(str(self.time)+str(self.location.x) + str(self.location.y))
+        return hash((self.time, self.location.x, self.location.y))
     def is_equal_except_time(self, state):
         return self.location == state.location
     def __str__(self):
@@ -314,7 +314,7 @@ class CBS(object):
         # compute solution
         start.solution = self.env.compute_solution()
         if not start.solution:
-            return {}
+            return None
         # compute cost of solution
         start.cost = self.env.compute_solution_cost(start.solution)
 
@@ -357,7 +357,7 @@ class CBS(object):
                 if new_node not in self.closed_set:
                     self.open_set |= {new_node}
 
-        return {}
+        return None
 
     def generate_plan(self, solution):
         plan = {}

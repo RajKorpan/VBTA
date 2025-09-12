@@ -128,14 +128,16 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
         obstacles=map_dict['obstacles'],
     )
     planner = CBS(env)
-    solution, nodes_expanded, conflicts = planner.search()
+    res = planner.search()
 
-    print(f"SOLUTION: {solution}")
+    # print(f"SOLUTION: {solution}")
 
-    if solution is None:
-        print("CBS could not find a conflict free path assignment for all agents")
+    if not res:
+        print("CBS failed to find a plan under current constraints.")
         # could possibly fall back on the simple method here if we get a lot of issues
     else:
+        solution, nodes_expanded, conflicts = res
+        print(f"SOLUTION: {solution}")
 
         # Iterate through the agents and their schedules
         id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
@@ -300,10 +302,12 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
             else:
                 env = Environment(dimension=map_dict['dimension'], agents=agents, obstacles=map_dict['obstacles'])
                 planner = CBS(env)
-                solution, nodes_expanded, conflicts = planner.search()
-                print(f"CBS COMPLETE. New solution: {solution}")
+                res = planner.search()
+                # print(f"CBS COMPLETE. New solution: {solution}")
 
-                if solution:
+                if res:
+                    solution, nodes_expanded, conflicts = res
+                    print(f"CBS COMPLETE. New solution: {solution}")
                     id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
                     for robot_id, schedule in solution.items():
                         ridx = id_to_index[robot_id]
@@ -314,7 +318,7 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
                     previous_active, previous_goals = state_check(robots)  # update to the post-replan state
                     events = {k: 0 for k in events}  # reset counters we just consumed
                 else:
-                    print("CBS could not find a conflict free path assignment for all agents")
+                    print("CBS failed to find a plan under current constraints.")
                     # could possibly fall back on the simple method here if we get a lot of issues
                     # but for now, we will just skip CBS and continue with the simulation
                     print("Skipping CBS...")
