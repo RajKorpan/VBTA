@@ -11,9 +11,52 @@ import argparse
 import yaml
 from math import fabs
 from itertools import combinations
+from collections import defaultdict
 from copy import deepcopy
 
-from a_star import AStar
+from hvbta.pathfinding.a_star import AStar
+
+# ---- helpers to normalize coordinates regardless of shape ----
+def _xy_from_start(value):
+    """Accepts tuple/list, State, or object with .location; returns (x, y)."""
+    # tuple/list like (x, y)
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return int(value[0]), int(value[1])
+
+    # State-like: has .location with .x/.y (your State class)
+    loc = getattr(value, "location", None)
+    if loc is not None and hasattr(loc, "x") and hasattr(loc, "y"):
+        return int(loc.x), int(loc.y)
+
+    # Location directly (rare, if you ever store Location instead of State)
+    if hasattr(value, "x") and hasattr(value, "y"):
+        return int(value.x), int(value.y)
+
+    raise TypeError(f"Unsupported start/goal value type: {type(value)}")
+
+
+def _get_start_goal(agent_obj):
+    """
+    Agent can be:
+      - dict with 'start'/'goal'
+      - object with .start/.goal
+    Each of start/goal can be tuple (x,y) or State(Location(x,y), t)
+    Returns (sx, sy, gx, gy)
+    """
+    if isinstance(agent_obj, dict):
+        start = agent_obj.get("start")
+        goal  = agent_obj.get("goal")
+    else:
+        start = getattr(agent_obj, "start", None)
+        goal  = getattr(agent_obj, "goal", None)
+
+    if start is None or goal is None:
+        raise ValueError("Agent missing start/goal")
+
+    sx, sy = _xy_from_start(start)
+    gx, gy = _xy_from_start(goal)
+    return sx, sy, gx, gy
+
 
 class Location(object):
     """Location class, represents agent location in environment as an (x, y) coordinate tuple"""
@@ -102,6 +145,40 @@ class Constraints(object):
         return "VC: " + str([str(vc) for vc in self.vertex_constraints])  + \
             "EC: " + str([str(ec) for ec in self.edge_constraints])
 
+class ConstraintTable:
+    """
+    Fast time-indexed lookups for CBS constraints.
+    Built from your per-agent Constraints() object.
+    """
+    def __init__(self, constraints):
+        # time -> set of (x, y)
+        self.vertex = defaultdict(set)
+        # time -> set of ((x1,y1),(x2,y2))
+        self.edge = defaultdict(set)
+        # optional earliest goal time
+        self.earliest_goal_time = None
+
+        self._build(constraints)
+
+    def _build(self, constraints):
+        # vertex constraints
+        for vc in getattr(constraints, "vertex_constraints", []):
+            self.vertex[vc.time].add((vc.location.x, vc.location.y))
+
+        # edge constraints
+        for ec in getattr(constraints, "edge_constraints", []):
+            self.edge[ec.time].add((
+                (ec.location_1.x, ec.location_1.y),
+                (ec.location_2.x, ec.location_2.y)
+            ))
+
+    def blocks_vertex(self, x, y, t) -> bool:
+        return (x, y) in self.vertex.get(t, ())
+
+    def blocks_edge(self, x1, y1, x2, y2, t) -> bool:
+        return ((x1, y1), (x2, y2)) in self.edge.get(t, ())
+
+
 class Environment(object):
     """Environment class represents the navigating environment"""
     def __init__(self, dimension, agents, obstacles):
@@ -118,13 +195,30 @@ class Environment(object):
 
         self.a_star = AStar(self)
 
-    def get_neighbors(self, state):
-        neighbors = []
+    def _time_horizon(self, agent_name: str) -> int:
+        """
+        Conservative upper bound on time.
+        Manhattan distance + (width + height) buffer works well in grids.
+        """
+        agent = self.agent_dict[agent_name]
+        sx, sy, gx, gy = _get_start_goal(agent)
+        w, h = self.dimension  # (width, height)
 
-        # Wait action
-        n = State(state.time + 1, state.location)
-        if self.state_valid(n):
-            neighbors.append(n)
+        manhattan = abs(sx - gx) + abs(sy - gy)
+        return int(manhattan + (w + h))
+
+
+    def get_neighbors(self, state, allow_wait=False):
+        neighbors = []
+        if isinstance(state, tuple):
+            x, y, t = state
+            state = State(t, Location(x, y))
+
+        if allow_wait:
+            # Wait action
+            n = State(state.time + 1, state.location)
+            if self.state_valid(n):
+                neighbors.append(n)
         # Up action
         n = State(state.time + 1, Location(state.location.x, state.location.y+1))
         if self.state_valid(n) and self.transition_valid(state, n):
@@ -264,17 +358,35 @@ class Environment(object):
             self.agent_dict.update({agent['name']:{'start':start_state, 'goal':goal_state}})
 
     def compute_solution(self):
-        """Find the solution"""
+        """
+        Low-level planning for all agents given the current high-level node's constraints.
+        Returns dict: {agent_name: path_list_of_dicts}
+        Each path entry expected like {'t': t, 'x': x, 'y': y} to match your A* output.
+        """
         solution = {}
-        for agent in self.agent_dict.keys():
-            # set each agents constraint dictionary to the default empty constraint class
-            self.constraints = self.constraint_dict.setdefault(agent, Constraints())
-            # find local solution for agent
-            local_solution = self.a_star.search(agent)
+    
+        for agent_name in self.agent_dict.keys():
+            # Get (or create) this agent's Constraints() object
+            constraints = self.constraint_dict.get(agent_name)
+            if constraints is None:
+                constraints = Constraints()
+                self.constraint_dict[agent_name] = constraints
+    
+            # Build the per-agent constraint table
+            ctab = ConstraintTable(constraints)
+    
+            # Time horizon
+            T_max = self._time_horizon(agent_name)
+    
+            # Call the new A*
+            local_solution = self.a_star.search(self, agent_name, ctab, T_max)
             if not local_solution:
-                return False
-            solution.update({agent:local_solution})
+                return None  # Signal failure to the high-level
+    
+            solution[agent_name] = local_solution
+    
         return solution
+
 
     def compute_solution_cost(self, solution):
         """compute total solution cost"""
@@ -291,9 +403,18 @@ class HighLevelNode(object):
         """Check for equivalent nodes"""
         if not isinstance(other, type(self)): return NotImplemented
         return self.solution == other.solution and self.cost == other.cost
-
+    
     def __hash__(self):
-        return hash((self.cost))
+        # hash with cost and frozenset of per-agent constraints to ensure uniqueness
+        vc = [] # vertex constraints
+        ec = [] # edge constraints
+        for agent, cons in sorted(self.constraint_dict.items()):
+            vc.extend((agent, c.time, c.location.x, c.location.y) for c in cons.vertex_constraints)
+            ec.extend((agent, c.time, c.location_1.x, c.location_1.y,
+                              c.location_2.x, c.location_2.y) for c in cons.edge_constraints)
+        return hash((self.cost, tuple(sorted(vc)), tuple(sorted(ec))))
+
+        
 
     def __lt__(self, other):
         """Compare costs of node solutions"""
@@ -314,7 +435,7 @@ class CBS(object):
         # compute solution
         start.solution = self.env.compute_solution()
         if not start.solution:
-            return None
+            return (None, 0, 0)
         # compute cost of solution
         start.cost = self.env.compute_solution_cost(start.solution)
 
@@ -357,7 +478,7 @@ class CBS(object):
                 if new_node not in self.closed_set:
                     self.open_set |= {new_node}
 
-        return None
+        return (None, len(self.closed_set), total_conflicts)
 
     def generate_plan(self, solution):
         plan = {}

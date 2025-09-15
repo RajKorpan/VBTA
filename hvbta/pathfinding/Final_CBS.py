@@ -1,3 +1,4 @@
+import heapq
 import sys
 sys.path.insert(0, '../')
 import argparse
@@ -5,8 +6,30 @@ import yaml
 from math import fabs
 from itertools import combinations
 from copy import deepcopy
+from concurrent.futures import ProcessPoolExecutor
 
 from hvbta.pathfinding.a_star import AStar
+
+def solve_for_agent(args):
+    """
+    A top-level worker function to find a path for a single agent.
+    This function is designed to be called by a ProcessPoolExecutor.
+    """
+    # Unpack all the arguments
+    agent_name, agent_dict, dimension, obstacles, constraints = args
+
+    # Create a temporary environment for this specific task
+    # Pass data, not the complex stateful CBS environment object
+    temp_env = Environment(dimension, [], obstacles) # Agents list can be empty
+    temp_env.agent_dict = {agent_name: agent_dict[agent_name]}
+    temp_env.a_star.agent_dict = temp_env.agent_dict
+    temp_env.constraints = constraints
+    
+    # The A* search is now run within this isolated process
+    path = temp_env.a_star.search(agent_name)
+    
+    # Return the agent's name along with its path
+    return agent_name, path
 
 class Location(object):
     """Location class, represents agent location in environment as an (x, y) coordinate tuple"""
@@ -24,13 +47,13 @@ class State(object):
     location is a Location object
     time is an int starting at 0
     """
-    def __init__(self, time, location):
+    def __init__(self, time: int, location: Location):
         self.time = time
         self.location = location
     def __eq__(self, other):
         return self.time == other.time and self.location == other.location
     def __hash__(self):
-        return hash(str(self.time)+str(self.location.x) + str(self.location.y))
+        return hash(str(self.time) + str(self.location.x) + str(self.location.y))
     def is_equal_except_time(self, state):
         return self.location == state.location
     def __str__(self):
@@ -55,7 +78,7 @@ class Conflict(object):
              ', '+ str(self.location_1) + ', ' + str(self.location_2) + ')'
 
 class VertexConstraint(object):
-    """Vertex constraint class, imposes vertex constraints on high level search nodes at a specified time and location"""
+    """Single Rule, Vertex constraint class, imposes vertex constraints on high level search nodes at a specified time and location"""
     def __init__(self, time, location):
         self.time = time
         self.location = location
@@ -68,7 +91,7 @@ class VertexConstraint(object):
         return '(' + str(self.time) + ', '+ str(self.location) + ')'
 
 class EdgeConstraint(object):
-    """Edge constraint class, imposes edge constraints on high level search nodes at a specified time and location, has 2 locations as opposed to vertex constraints (needs both verticies)"""
+    """Single Rule, Edge constraint class, imposes edge constraints on high level search nodes at a specified time and location, has 2 locations as opposed to vertex constraints (needs both verticies)"""
     def __init__(self, time, location_1, location_2):
         self.time = time
         self.location_1 = location_1
@@ -82,7 +105,7 @@ class EdgeConstraint(object):
         return '(' + str(self.time) + ', '+ str(self.location_1) +', '+ str(self.location_2) + ')'
 
 class Constraints(object):
-    """Base constraint class, keeps track of sets of constraints and can add new ones as needed"""
+    """Tracker of all constraints, one for each agent, Base constraint class, keeps track of sets of constraints and can add new ones as needed"""
     def __init__(self):
         self.vertex_constraints = set()
         self.edge_constraints = set()
@@ -158,9 +181,9 @@ class Environment(object):
 
     def get_first_conflict(self, solution):
         """Check for conflicts"""
-        max_t = max([len(plan) for plan in solution.values()])
+        max_time = max([len(plan) for plan in solution.values()])
         result = Conflict()
-        for t in range(max_t):
+        for t in range(max_time):
             # Check for vertex conflicts
             for agent_1, agent_2 in combinations(solution.keys(), 2):
                 state_1 = self.get_state(agent_1, solution, t)
@@ -257,17 +280,46 @@ class Environment(object):
 
             self.agent_dict.update({agent['name']:{'start':start_state, 'goal':goal_state}})
 
+    # def compute_solution(self):
+    #     """Find the solution"""
+    #     solution = {}
+    #     for agent in self.agent_dict.keys():
+    #         # set each agents constraint dictionary to the default empty constraint class
+    #         self.constraints = self.constraint_dict.setdefault(agent, Constraints())
+    #         # find local solution for agent
+    #         print(f"A STAR PLANNING FOR AGENT {agent}")
+    #         local_solution = self.a_star.search(agent)
+    #         if not local_solution:
+    #             return False
+    #         solution.update({agent:local_solution})
+    #     return solution
+
     def compute_solution(self):
-        """Find the solution"""
+        """
+        Finds the solution in parallel for each agent using ProcessPoolExecutor
+        """
         solution = {}
-        for agent in self.agent_dict.keys():
-            # set each agents constraint dictionary to the default empty constraint class
-            self.constraints = self.constraint_dict.setdefault(agent, Constraints())
-            # find local solution for agent
-            local_solution = self.a_star.search(agent)
-            if not local_solution:
-                return False
-            solution.update({agent:local_solution})
+        tasks = []
+
+        for agent_name in self.agent_dict.keys():
+            agent_constraints = self.constraint_dict.get(agent_name, Constraints())
+            task_args = (
+                agent_name,
+                self.agent_dict,
+                self.dimension,
+                self.obstacles,
+                agent_constraints
+            )
+            tasks.append(task_args)
+
+        with ProcessPoolExecutor() as executor:
+            results = executor.map(solve_for_agent, tasks)
+
+            for agent_name, path in results:
+                if not path:
+                    return False
+                solution[agent_name] = path
+
         return solution
 
     def compute_solution_cost(self, solution):
@@ -281,13 +333,31 @@ class HighLevelNode(object):
         self.constraint_dict = {}
         self.cost = 0
 
-    def __eq__(self, other):
-        """Check for equivalent nodes"""
-        if not isinstance(other, type(self)): return NotImplemented
-        return self.solution == other.solution and self.cost == other.cost
+    # def __eq__(self, other):
+    #     """Check for equivalent nodes"""
+    #     if not isinstance(other, type(self)): return NotImplemented
+    #     return self.solution == other.solution and self.cost == other.cost
 
+    def __eq__(self, other):
+        """Check for equivalent nodes based on constraints"""
+        if not isinstance(other, type(self)): return NotImplemented
+        return self.constraint_dict_to_tuple(self.constraint_dict) == self.constraint_dict_to_tuple(other.constraint_dict)
+    
     def __hash__(self):
-        return hash((self.cost))
+        """Hash based on constraints"""
+        return hash(self.constraint_dict_to_tuple(self.constraint_dict))
+    
+    def constraint_dict_to_tuple(self, constraint_dict):
+        """Convert constraint dictionary to a hashable tuple"""
+        frozen_constraints = set()
+        for agent, constraints in constraint_dict.items():
+            vc_tuples = frozenset((vc.time, vc.location.x, vc.location.y) for vc in constraints.vertex_constraints)
+            ec_tuples = frozenset((ec.time, ec.location_1.x, ec.location_1.y, ec.location_2.x, ec.location_2.y) for ec in constraints.edge_constraints)
+            frozen_constraints.add((agent, vc_tuples, ec_tuples))
+        return frozenset(frozen_constraints)
+
+    # def __hash__(self):
+    #     return hash((self.cost))
 
     def __lt__(self, other):
         """Compare costs of node solutions"""
@@ -295,15 +365,17 @@ class HighLevelNode(object):
 
 class CBS(object):
     """CBS search class"""
-    def __init__(self, environment):
+    def __init__(self, environment: Environment):
         self.env = environment
-        self.open_set = set()
+        # self.open_set = set()
+        self.open_set = []
         self.closed_set = set()
     def search(self):
         start = HighLevelNode()
-        # TODO: Initialize it in a better way
+        print(f"\n\n\n COMPUTING INITIAL SOLUTION\n\n\n")
         start.constraint_dict = {}
         for agent in self.env.agent_dict.keys():
+            # Every agent starts with an empty constraint set
             start.constraint_dict[agent] = Constraints()
         # compute solution
         start.solution = self.env.compute_solution()
@@ -315,43 +387,82 @@ class CBS(object):
         # count conflicts resolved for a difficulty metric
         total_conflicts = 0
 
-        # set open_set to the solution HighLevelNode
-        self.open_set |= {start}
+        # set open_set to the HighLevelNode
+        # self.open_set |= {start}
+        # Push the start node onto the heap
+        heapq.heappush(self.open_set, start)
+        count = 0
 
         # Search open_set starting with the lowest cost nodes first, adding them to closed_set as we go
         while self.open_set:
-            P = min(self.open_set)
-            self.open_set -= {P}
-            self.closed_set |= {P}
-
+            print(f"\n\n\n EXPANDING HIGH LEVEL NODE {count} \n\n\n")
+            # compares nodes based on cost of their solutions (uses __lt__ in HighLevelNode)
+            # P = min(self.open_set)
+            # self.open_set -= {P}
+            # self.closed_set |= {P}
+            # Pop the node with the smallest cost from the heap
+            P = heapq.heappop(self.open_set)
+            self.closed_set.add(P)
             
             self.env.constraint_dict = P.constraint_dict
+            print(f"GETTING FIRST CONFLICT")
             conflict_dict = self.env.get_first_conflict(P.solution)
-            if conflict_dict:
-                total_conflicts += 1
-            else:
+            print(f"GOT FIRST CONFLICT")
+
+            if not conflict_dict:
                 print(f"Solution found after expanding {len(self.closed_set)} high level nodes")
                 print(f"Total conflicts identified {total_conflicts}")
-
                 return self.generate_plan(P.solution), len(self.closed_set), total_conflicts
-
+            
+            total_conflicts += 1
+            print(f"CREATING CONSTRAINTS FROM CONFLICT")
             constraint_dict = self.env.create_constraints_from_conflict(conflict_dict)
 
             for agent in constraint_dict.keys():
+                print(f"ADDING CONSTRAINTS FOR AGENT {agent}")
                 new_node = deepcopy(P)
                 new_node.constraint_dict[agent].add_constraint(constraint_dict[agent])
 
+                # Check if this new configuration of constraints has been seen before
+                if new_node in self.closed_set:
+                    continue
+
                 self.env.constraint_dict = new_node.constraint_dict
+                print(f"RECOMPUTING SOLUTION FOR AGENT {agent}")
                 new_node.solution = self.env.compute_solution()
                 if not new_node.solution:
                     continue
                 new_node.cost = self.env.compute_solution_cost(new_node.solution)
 
-                # TODO: ending condition
-                if new_node not in self.closed_set:
-                    self.open_set |= {new_node}
+                # Push the new node onto the heap
+                heapq.heappush(self.open_set, new_node)
+            count += 1
 
         return {}
+        #     if conflict_dict:
+        #         total_conflicts += 1
+        #     else:
+        #         print(f"Solution found after expanding {len(self.closed_set)} high level nodes")
+        #         print(f"Total conflicts identified {total_conflicts}")
+
+        #         return self.generate_plan(P.solution), len(self.closed_set), total_conflicts
+
+        #     constraint_dict = self.env.create_constraints_from_conflict(conflict_dict)
+
+        #     for agent in constraint_dict.keys():
+        #         new_node = deepcopy(P)
+        #         new_node.constraint_dict[agent].add_constraint(constraint_dict[agent])
+
+        #         self.env.constraint_dict = new_node.constraint_dict
+        #         new_node.solution = self.env.compute_solution()
+        #         if not new_node.solution:
+        #             continue
+        #         new_node.cost = self.env.compute_solution_cost(new_node.solution)
+
+        #         if new_node not in self.closed_set:
+        #             self.open_set |= {new_node}
+
+        # return {}
 
     def generate_plan(self, solution):
         plan = {}

@@ -37,6 +37,7 @@ def state_check(robots: List[CapabilityProfile]):
 
 def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], robots: List[CapabilityProfile], tasks: List[TaskDescription], num_candidates: int, voting_method: callable, grid: List[List[int]], map_dict: dict, suitability_method: callable, suitability_matrix: np.ndarray, max_time_steps: int, add_tasks: bool, add_robots: bool, remove_robots: bool, tasks_to_add: int = 1, robots_to_add: int = 1, robots_to_remove: int = 1):
     print(f"SUITABILITY METHOD: {suitability_method}")
+    # print(f"DEBUG STATEMENT 1")
 
     voting_methods = {
         V.rank_assignments_borda: "Borda Count",
@@ -66,6 +67,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
     total_reassignment_time = 0.0
     total_reassignment_score = 0.0
     total_reassignments = 0
+
+    # print(f"DEBUG STATEMENT 2")
 
     for r in robots:
         # add the robot's initial position to the occupied positions set
@@ -109,6 +112,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
     print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
     print(f"UNASSIGNED TASKS: {unassigned_tasks}")
 
+    # print(f"DEBUG STATEMENT 3")
+
     agents = build_cbs_agents(robots, start_positions, goal_positions)
 
     print(f"AGENTS LIST: {agents}")
@@ -122,11 +127,15 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
         'agents': agents,
     }
 
+    # print(f"DEBUG STATEMENT 4")
+
     env = Environment(
         dimension=map_dict['dimension'],
         agents=input_data['agents'],
         obstacles=map_dict['obstacles'],
     )
+
+    print(f"DEBUG STATEMENT BEFORE TIMESTEPS - ENVIRONMENT CREATED - AGENTS BUILT: {agents}")
     planner = CBS(env)
     res = planner.search()
 
@@ -138,6 +147,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
     else:
         solution, nodes_expanded, conflicts = res
         print(f"SOLUTION: {solution}")
+
+        print(f"DEBUG STATEMENT - BEFORE TIMESTESP CBS COMPLETE - NODES EXPANDED: {nodes_expanded}, CONFLICTS: {conflicts}")
 
         # Iterate through the agents and their schedules
         id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
@@ -162,12 +173,13 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
     idle_steps = {r.robot_id: 0 for r in robots} # track idleness of free robots
 
     for time_step in range(max_time_steps):
+        # print(f"DEBUG STATEMENT 7 - TIME STEP {time_step+1}")
         # print(f"\n--- Time Step {time_step + 1} ---")
         # print(f"OCCUPIED POSITIONS: {occupied_positions}")
         print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
         print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
         print(f"START POSITIONS: {start_positions}")
-        print(f"GOAL POSITONS: {goal_positions}")
+        print(f"GOAL POSITIONS: {goal_positions}")
         print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
         print(f"UNASSIGNED TASKS: {unassigned_tasks}")
         # print(f"ALL ROBOTS: {len(robots)}")
@@ -185,6 +197,9 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
             suitability_method, occupied_positions, start_positions, 
             goal_positions, 1.0, total_reward, total_success
         )
+
+        # print(f"DEBUG STATEMENT 8")
+
         if len(tasks) == 0:
             print(f"All tasks completed in {time_step} time steps!")
             break
@@ -200,6 +215,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
             )
             events["new_tasks"] += num_of_tasks_added # track number of tasks added
 
+        # print(f"DEBUG STATEMENT 9")
+
         if add_robots and time_step + 1 <= 4 and random.random() < 0.5: # add robots only in the first 4 time steps, and randomly
             print(f"ADDING NEW ROBOTS AT TIME STEP {time_step + 1}")
             num_of_robots_added = random.randint(0, robots_to_add)
@@ -211,11 +228,15 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
                 if r.robot_id not in idle_steps:
                     idle_steps[r.robot_id] = 0
 
+        # print(f"DEBUG STATEMENT 10")
+
         # Periodically remove robots
         if remove_robots and time_step + 1 <= 4 and random.random() < 0.5: # remove robots only in the first 4 time steps, and randomly
             if len(assigned_robots) > 1: # Otherwise will break CBS, we need at least one agent for things to run smoothly
                 print(f"REMOVING RANDOM ROBOTS AT TIME STEP {time_step + 1}")
                 remove_random_robots(robots, tasks, unassigned_robots, unassigned_tasks, random.randint(0, robots_to_remove), occupied_positions, start_positions, goal_positions)
+
+        # print(f"DEBUG STATEMENT 11")
 
         for r in robots:
             if not r.assigned:
@@ -235,6 +256,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
 
         # update planning signatures
         current_active, current_goals = state_check(robots)
+
+        # print(f"DEBUG STATEMENT 12")
 
         # Update assigned robots
         assigned_robots = {r.robot_id: r.current_task.task_id for r in robots if r.assigned and r.current_task}
@@ -273,6 +296,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
             total_reassignment_time  += reassign_length
             total_reassignment_score += reassign_score
 
+            # print(f"DEBUG STATEMENT 13")
+
             # rebuild starts/goals after potential changes from reassignment
             for robot in robots:
                 if robot.assigned and robot.current_task:
@@ -294,6 +319,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
         if should_replan_cbs and start_positions and goal_positions:
             agents = build_cbs_agents(robots, start_positions, goal_positions)
 
+            print(f"DEBUG STATEMENT - ENVIRONMENT CREATED - AGENTS BUILT: {agents}")
+
             # duplicate-start validation
             start_locations = [a['start'] for a in agents]
             if len(start_locations) != len(set(start_locations)):
@@ -304,6 +331,8 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
                 planner = CBS(env)
                 res = planner.search()
                 # print(f"CBS COMPLETE. New solution: {solution}")
+
+                print(f"DEBUG STATEMENT - CBS COMPLETE - NODES EXPANDED: {nodes_expanded}, CONFLICTS: {conflicts}")
 
                 if res:
                     solution, nodes_expanded, conflicts = res
@@ -317,12 +346,15 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
 
                     previous_active, previous_goals = state_check(robots)  # update to the post-replan state
                     events = {k: 0 for k in events}  # reset counters we just consumed
+
+                    # print(f"DEBUG STATEMENT 16")
                 else:
                     print("CBS failed to find a plan under current constraints.")
                     # could possibly fall back on the simple method here if we get a lot of issues
                     # but for now, we will just skip CBS and continue with the simulation
                     print("Skipping CBS...")
                     time_steps_unchanged += 1
+                    # print(f"DEBUG STATEMENT 17 - TIME STEPS UNCHANGED {time_steps_unchanged}")
                     if time_steps_unchanged >= 3:
                         print("No state change for 3 time steps, ending simulation.")
                         break
@@ -332,7 +364,9 @@ def main_simulation(output: tuple[list[tuple[int, int]],list[int],list[int]], ro
             print(f"ALL TASKS: {len(tasks)}")
             print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
             print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
+            # print(f"DEBUG STATEMENT 18")
 
+    # print(f"DEBUG STATEMENT 19")
     overall_success_rate = total_success / total_tasks
     print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, total reassignments: {total_reassignments}")
 #     for robot in robots:
@@ -370,7 +404,7 @@ if __name__ == "__main__":
             ]
         suitability_methods = [S.evaluate_suitability_new, S.evaluate_suitability_loose, S.evaluate_suitability_strict]
         max_time_steps = 100
-        robot_sizes = [10, 15]
+        robot_sizes = [8, 10]
         # candidate_sizes = [5, 10, 15]
         num_repetitions = 1
         add_tasks = False
@@ -391,17 +425,17 @@ if __name__ == "__main__":
             for num_robots in robot_sizes:
                 print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
                 task_sizes = [
-                    int(num_robots * 0.5),
+                    # int(num_robots * 0.5),
                     int(num_robots * 0.75),
                     num_robots,
                     int(num_robots * 1.25),
-                    int(num_robots * 1.5)
+                    # int(num_robots * 1.5)
                 ]
                 for num_tasks in task_sizes:
                     print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                     candidate_sizes = [
-                        max(1, int(num_robots * 0.75),
-                            max(1, int(num_tasks * 1)))
+                        max(1, int(num_robots * 0.75)),
+                            max(1, int(num_tasks * 1)),
                     ]
                     for nc in candidate_sizes:
                         print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
