@@ -487,7 +487,8 @@ if __name__ == "__main__":
         robot_generation_strict = True
         task_generation_strict = True
         map_file = r"test_small_open.map"
-        dir_path = r"hvbta\io\results"
+        # dir_path = r"hvbta\io\results"
+        dir_path = os.path.join('hvbta', 'io', 'results')
         grid = load_map(map_file) # 2D list of 0/1 representing the map
         dims = (len(grid), len(grid[0])) # dimensions of the map grid
         obstacles = create_obstacle_list(grid) # list of obstacle coordinates
