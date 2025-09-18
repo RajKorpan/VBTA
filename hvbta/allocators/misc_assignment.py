@@ -22,7 +22,8 @@ def unassign_task_from_robot(robot: CapabilityProfile, tasks: List[TaskDescripti
     if rid not in unassigned_robots:
         unassigned_robots.append(rid)
 
-def add_new_tasks(tasks: List[TaskDescription], unassigned_tasks: List[str], task_max_id: int, new_task_count: int, total_tasks: int, grid: List[List[int]], occupied_locations: set) -> Tuple[int, int]:
+        
+def add_new_tasks(tasks: List[TaskDescription], unassigned_tasks: List[str], task_max_id: int, new_task_count: int, total_tasks: int, grid: List[List[int]], occupied_locations: set, strict: bool) -> Tuple[int, int]:
     """
     This function generates new unassigned tasks with random descriptions and adds them to the tasks list.
     It also updates the unassigned tasks list and occupied locations set.
@@ -43,38 +44,68 @@ def add_new_tasks(tasks: List[TaskDescription], unassigned_tasks: List[str], tas
         task_id = f"T{task_max_id}"
         task_max_id += 1
         total_tasks += 1
-        new_task = G.generate_random_task_description(task_id, grid, occupied_locations, tasks)
+        if strict:
+            new_task = G.generate_random_task_description_strict(task_id, grid, occupied_locations, tasks)
+        else:
+            new_task = G.generate_random_task_description(task_id, grid, occupied_locations, tasks)
         tasks.append(new_task)
         unassigned_tasks.append(task_id)
     return task_max_id, total_tasks
 
-def add_new_tasks_strict(tasks: List[TaskDescription], unassigned_tasks: List[str], task_max_id: int, new_task_count: int, total_tasks: int, grid: List[List[int]], occupied_locations: set) -> Tuple[int, int]:
-    """
-    This function generates new unassigned tasks with random descriptions and adds them to the tasks list.
-    It also updates the unassigned tasks list and occupied locations set.
+# def add_new_tasks(tasks: List[TaskDescription], unassigned_tasks: List[str], task_max_id: int, new_task_count: int, total_tasks: int, grid: List[List[int]], occupied_locations: set) -> Tuple[int, int]:
+#     """
+#     This function generates new unassigned tasks with random descriptions and adds them to the tasks list.
+#     It also updates the unassigned tasks list and occupied locations set.
     
-    Parameters:
-        tasks: List of existing task descriptions.
-        unassigned_tasks: List of unassigned task IDs.
-        task_max_id: The current maximum task ID to ensure unique IDs for new tasks.
-        new_task_count: The number of new tasks to add.
-        grid: The grid representing the environment where tasks are located.
-        occupied_locations: A set of currently occupied locations to avoid conflicts.
+#     Parameters:
+#         tasks: List of existing task descriptions.
+#         unassigned_tasks: List of unassigned task IDs.
+#         task_max_id: The current maximum task ID to ensure unique IDs for new tasks.
+#         new_task_count: The number of new tasks to add.
+#         grid: The grid representing the environment where tasks are located.
+#         occupied_locations: A set of currently occupied locations to avoid conflicts.
         
-    Returns:
-        task_max_id: The updated maximum task ID after adding new tasks.
-        total_tasks: The updated total number of tasks in the system.
-    """
-    for _ in range(new_task_count):
-        task_id = f"T{task_max_id}"
-        task_max_id += 1
-        total_tasks += 1
-        new_task = G.generate_random_task_description_strict(task_id, grid, occupied_locations, tasks)
-        tasks.append(new_task)
-        unassigned_tasks.append(task_id)
-    return task_max_id, total_tasks
+#     Returns:
+#         task_max_id: The updated maximum task ID after adding new tasks.
+#         total_tasks: The updated total number of tasks in the system.
+#     """
+#     for _ in range(new_task_count):
+#         task_id = f"T{task_max_id}"
+#         task_max_id += 1
+#         total_tasks += 1
+#         new_task = G.generate_random_task_description(task_id, grid, occupied_locations, tasks)
+#         tasks.append(new_task)
+#         unassigned_tasks.append(task_id)
+#     return task_max_id, total_tasks
 
-def add_new_robots(robots: List[CapabilityProfile], unassigned_robots: List[str], robot_max_id: int, new_robot_count: int, grid: List[List[int]], occupied_locations: set) -> int:
+# def add_new_tasks_strict(tasks: List[TaskDescription], unassigned_tasks: List[str], task_max_id: int, new_task_count: int, total_tasks: int, grid: List[List[int]], occupied_locations: set) -> Tuple[int, int]:
+#     """
+#     This function generates new unassigned tasks with random descriptions and adds them to the tasks list.
+#     It also updates the unassigned tasks list and occupied locations set.
+    
+#     Parameters:
+#         tasks: List of existing task descriptions.
+#         unassigned_tasks: List of unassigned task IDs.
+#         task_max_id: The current maximum task ID to ensure unique IDs for new tasks.
+#         new_task_count: The number of new tasks to add.
+#         grid: The grid representing the environment where tasks are located.
+#         occupied_locations: A set of currently occupied locations to avoid conflicts.
+        
+#     Returns:
+#         task_max_id: The updated maximum task ID after adding new tasks.
+#         total_tasks: The updated total number of tasks in the system.
+#     """
+#     for _ in range(new_task_count):
+#         task_id = f"T{task_max_id}"
+#         task_max_id += 1
+#         total_tasks += 1
+#         new_task = G.generate_random_task_description_strict(task_id, grid, occupied_locations, tasks)
+#         tasks.append(new_task)
+#         unassigned_tasks.append(task_id)
+#     return task_max_id, total_tasks
+
+
+def add_new_robots(robots: List[CapabilityProfile], unassigned_robots: List[str], robot_max_id: int, new_robot_count: int, grid: List[List[int]], occupied_locations: set, strict: bool) -> int:
     """
     This function generates new unassigned robots with random profiles and adds them to the robots list.
     It also updates the unassigned robots list and occupied locations set.
@@ -93,7 +124,10 @@ def add_new_robots(robots: List[CapabilityProfile], unassigned_robots: List[str]
     for _ in range(new_robot_count):
         robot_id = f"R{robot_max_id}"
         robot_max_id += 1
-        new_robot = G.generate_random_robot_profile(robot_id, grid, occupied_locations)
+        if strict:
+            new_robot = G.generate_random_robot_profile_strict(robot_id, grid, occupied_locations)
+        else:
+            new_robot = G.generate_random_robot_profile(robot_id, grid, occupied_locations)
         robots.append(new_robot)
         unassigned_robots.append(robot_id)
         occupied_locations.add(new_robot.location)
@@ -101,32 +135,59 @@ def add_new_robots(robots: List[CapabilityProfile], unassigned_robots: List[str]
         # NOTE: may need to make robot.current_path an empty list when unassigned to prevent unintentional movement
     return robot_max_id
 
-def add_new_robots_strict(robots: List[CapabilityProfile], unassigned_robots: List[str], robot_max_id: int, new_robot_count: int, grid: List[List[int]], occupied_locations: set) -> int:
-    """
-    This function generates new unassigned robots with random profiles and adds them to the robots list.
-    It also updates the unassigned robots list and occupied locations set.
+# def add_new_robots(robots: List[CapabilityProfile], unassigned_robots: List[str], robot_max_id: int, new_robot_count: int, grid: List[List[int]], occupied_locations: set) -> int:
+#     """
+#     This function generates new unassigned robots with random profiles and adds them to the robots list.
+#     It also updates the unassigned robots list and occupied locations set.
     
-    Parameters:
-        robots: List of existing robot profiles.
-        unassigned_robots: List of unassigned robot IDs.
-        robot_max_id: The current maximum robot ID to ensure unique IDs for new robots.
-        new_robot_count: The number of new robots to add.
-        grid: The grid representing the environment where robots operate.
-        occupied_locations: A set of currently occupied locations to avoid conflicts.
+#     Parameters:
+#         robots: List of existing robot profiles.
+#         unassigned_robots: List of unassigned robot IDs.
+#         robot_max_id: The current maximum robot ID to ensure unique IDs for new robots.
+#         new_robot_count: The number of new robots to add.
+#         grid: The grid representing the environment where robots operate.
+#         occupied_locations: A set of currently occupied locations to avoid conflicts.
         
-    Returns:
-        robot_max_id: The updated maximum robot ID after adding new robots.
-        """
-    for _ in range(new_robot_count):
-        robot_id = f"R{robot_max_id}"
-        robot_max_id += 1
-        new_robot = G.generate_random_robot_profile_strict(robot_id, grid, occupied_locations)
-        robots.append(new_robot)
-        unassigned_robots.append(robot_id)
-        occupied_locations.add(new_robot.location)
-        # NOTE: do not update start_positions until robots are given a task because they will be in a new location each time they are assigned a task if they get reassigned and CBS recalculates paths
-        # NOTE: may need to make robot.current_path an empty list when unassigned to prevent unintentional movement
-    return robot_max_id
+#     Returns:
+#         robot_max_id: The updated maximum robot ID after adding new robots.
+#         """
+#     for _ in range(new_robot_count):
+#         robot_id = f"R{robot_max_id}"
+#         robot_max_id += 1
+#         new_robot = G.generate_random_robot_profile(robot_id, grid, occupied_locations)
+#         robots.append(new_robot)
+#         unassigned_robots.append(robot_id)
+#         occupied_locations.add(new_robot.location)
+#         # NOTE: do not update start_positions until robots are given a task because they will be in a new location each time they are assigned a task if they get reassigned and CBS recalculates paths
+#         # NOTE: may need to make robot.current_path an empty list when unassigned to prevent unintentional movement
+#     return robot_max_id
+
+# def add_new_robots_strict(robots: List[CapabilityProfile], unassigned_robots: List[str], robot_max_id: int, new_robot_count: int, grid: List[List[int]], occupied_locations: set) -> int:
+#     """
+#     This function generates new unassigned robots with random profiles and adds them to the robots list.
+#     It also updates the unassigned robots list and occupied locations set.
+    
+#     Parameters:
+#         robots: List of existing robot profiles.
+#         unassigned_robots: List of unassigned robot IDs.
+#         robot_max_id: The current maximum robot ID to ensure unique IDs for new robots.
+#         new_robot_count: The number of new robots to add.
+#         grid: The grid representing the environment where robots operate.
+#         occupied_locations: A set of currently occupied locations to avoid conflicts.
+        
+#     Returns:
+#         robot_max_id: The updated maximum robot ID after adding new robots.
+#         """
+#     for _ in range(new_robot_count):
+#         robot_id = f"R{robot_max_id}"
+#         robot_max_id += 1
+#         new_robot = G.generate_random_robot_profile_strict(robot_id, grid, occupied_locations)
+#         robots.append(new_robot)
+#         unassigned_robots.append(robot_id)
+#         occupied_locations.add(new_robot.location)
+#         # NOTE: do not update start_positions until robots are given a task because they will be in a new location each time they are assigned a task if they get reassigned and CBS recalculates paths
+#         # NOTE: may need to make robot.current_path an empty list when unassigned to prevent unintentional movement
+#     return robot_max_id
 
 
 def remove_random_robots(robots: List[CapabilityProfile], tasks: List[TaskDescription], unassigned_robots: List[str], unassigned_tasks: List[str], count: int, occupied_locations: set, start_positions: dict, goal_positions: dict):

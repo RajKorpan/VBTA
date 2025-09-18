@@ -1,4 +1,6 @@
 import random
+from typing import List, Tuple
+from hvbta.models import CapabilityProfile
 
 def load_map(map_filename):
     """Function to load ascii maps from the MAPF benchmark .map files"""
@@ -81,7 +83,7 @@ def get_random_free_position(grid, occupied_positions):
     # return chosen
     return random.choice(free_cells)  # return a single random free cell from the list
 
-def build_cbs_agents(robots, start_positions, goal_positions):
+def build_cbs_agents(robots: List[CapabilityProfile], start_positions: dict, goal_positions: dict) -> list[dict]:
     """
     Return a fresh list of {'name','start','goal'} dicts for CBS,
     based on whatever robots are currently marked assigned.

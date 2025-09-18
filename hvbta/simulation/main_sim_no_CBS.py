@@ -7,17 +7,65 @@ import os
 from typing import List
 import copy
 from hvbta.pathfinding.Final_CBS import CBS, Environment
-from hvbta.simulation.timestep import simulate_time_step
+from hvbta.simulation.timestep_no_CBS import simulate_time_step
 import hvbta.allocators.voting as V
 import hvbta.suitability as S
 from hvbta.pathfinding.CBS import load_map, create_obstacle_list, build_cbs_agents
 from hvbta.allocators.misc_assignment import add_new_tasks, add_new_robots, remove_random_robots
 from hvbta.generation import generate_random_robot_profile_strict, generate_random_task_description_strict
 from hvbta.models import CapabilityProfile, TaskDescription
+import heapq
+import concurrent.futures
 import hvbta.allocators.optimizers as O
 
 def suitability_all_zero(suitability_matrix):
     return all(value == 0 for row in suitability_matrix for value in row)
+
+
+def astar(start, goal, dims, obstacle_set):
+    # 4-connected grid A* (Manhattan heuristic)
+    rows, cols = dims
+    def heuristic(a, b):
+        return abs(a[0]-b[0]) + abs(a[1]-b[1])
+
+    def neighbors(node):
+        x, y = node
+        for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+            nx, ny = x+dx, y+dy
+            if 0 <= nx < rows and 0 <= ny < cols and (nx, ny) not in obstacle_set:
+                yield (nx, ny)
+
+    open_heap = []
+    heapq.heappush(open_heap, (heuristic(start, goal), 0, start))
+    came_from = {}
+    gscore = {start: 0}
+
+    while open_heap:
+        f, g, current = heapq.heappop(open_heap)
+        if current == goal:
+            # reconstruct path
+            path = [current]
+            while current in came_from:
+                current = came_from[current]
+                path.append(current)
+            return list(reversed(path))
+        for neigh in neighbors(current):
+            tentative_g = gscore[current] + 1
+            if tentative_g < gscore.get(neigh, float('inf')):
+                came_from[neigh] = current
+                gscore[neigh] = tentative_g
+                heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
+    return None  # no path found
+
+
+def _compute_agent_path(args):
+    # args: (rid, start, goal, dims, obstacle_set)
+    rid, start, goal, dims, obstacle_set = args
+    try:
+        path = astar(start, goal, dims, obstacle_set)
+    except Exception:
+        path = None
+    return (rid, path)
 
 def state_check(robots: List[CapabilityProfile]):
     """
@@ -34,6 +82,9 @@ def state_check(robots: List[CapabilityProfile]):
     active_signature = tuple(sorted(active))
     goals_signature = tuple(sorted(goals))
     return active_signature, goals_signature
+
+def manhattan_distance(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 def main_simulation(
         output: tuple[list[tuple[int, int]],list[int],list[int]], 
@@ -52,7 +103,11 @@ def main_simulation(
         robots_to_add: int = 1, 
         robots_to_remove: int = 1,
         robot_generation_strict: bool = True,
-        task_generation_strict: bool = True):
+        task_generation_strict: bool = True,
+        # If True, use ThreadPoolExecutor instead of ProcessPoolExecutor for parallel A*.
+        # Threads avoid multiprocessing pickling/Windows spawn issues but may be slower
+        # for CPU-bound A* due to the GIL. Default is False (use processes).
+        use_threads: bool = False):
     print(f"SUITABILITY METHOD: {suitability_method}")
     # print(f"DEBUG STATEMENT 1")
 
@@ -129,65 +184,66 @@ def main_simulation(
     print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
     print(f"UNASSIGNED TASKS: {unassigned_tasks}")
 
-    # print(f"DEBUG STATEMENT 3")
-
+    # NOTE GOES HERE
     agents = build_cbs_agents(robots, start_positions, goal_positions)
+
+    # Use module-level `astar` implementation for path computation (defined above)
 
     print(f"AGENTS LIST: {agents}")
 
-    # Create the input data dictionary for CBS, this will be passed to the CBS planner
-    input_data = {
-        'map' : {
-            'dimension': map_dict['dimension'],
-            'obstacles': map_dict['obstacles']
-        },
-        'agents': agents,
-    }
+    # Build obstacle set and dims
+    dims = map_dict['dimension']
+    def get_obstacle_set(grid):
+        obstacle_set = set()
+        for r in range(len(grid)):
+            for c in range(len(grid[r])):
+                if grid[r][c] == 1:
+                    obstacle_set.add((r, c))
+        return obstacle_set
+    obstacle_set = get_obstacle_set(grid)
 
-    # print(f"DEBUG STATEMENT 4")
+    # Compute A* path for each assigned agent independently (parallelized)
+    # agents is a list of dicts with 'name', 'start', 'goal' per build_cbs_agents output
+    args = []
+    for a in agents:
+        rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
+        start = tuple(a['start'])
+        goal = tuple(a['goal'])
+        args.append((rid, start, goal, dims, obstacle_set))
 
-    env = Environment(
-        dimension=map_dict['dimension'],
-        agents=input_data['agents'],
-        obstacles=map_dict['obstacles'],
-    )
+    solution = {}
+    if args:
+        max_workers = min(len(args), (os.cpu_count() or 1))
+        ExecutorClass = concurrent.futures.ThreadPoolExecutor if use_threads else concurrent.futures.ProcessPoolExecutor
+        with ExecutorClass(max_workers=max_workers) as ex:
+            for rid, path in ex.map(_compute_agent_path, args):
+                if path:
+                    solution[rid] = path
+                else:
+                    print(f"Warning: no A* path found for agent {rid}")
+                    solution[rid] = None
 
-    print(f"DEBUG STATEMENT BEFORE TIMESTEPS - ENVIRONMENT CREATED - AGENTS BUILT: {agents}")
-    planner = CBS(env)
-    res = planner.search()
+    # Assign computed paths back to robot objects
+    id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
+    for robot_id, path in solution.items():
+        if path is None:
+            continue
+        # if robot_id not in id_to_index:
+        #     for idx, r in enumerate(robots):
+        #         if getattr(r, "robot_id", None) == robot_id or getattr(r, "name", None) == robot_id:
+        #             id_to_index[robot_id] = idx
+        #             break
+        if robot_id in id_to_index:
+            r = robots[id_to_index[robot_id]]
+            r.current_path = path
+            r.remaining_distance = max(0, len(path) - 1)
 
-    # print(f"SOLUTION: {solution}")
-
-    if not res:
-        print("CBS failed to find a plan under current constraints.")
-        # could possibly fall back on the simple method here if we get a lot of issues
-    else:
-        solution, nodes_expanded, conflicts = res
-        print(f"SOLUTION: {solution}")
-
-        print(f"DEBUG STATEMENT - BEFORE TIMESTESP CBS COMPLETE - NODES EXPANDED: {nodes_expanded}, CONFLICTS: {conflicts}")
-
-        # Iterate through the agents and their schedules
-        id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
-        for robot_id, schedule in solution.items():
-            ridx = id_to_index[robot_id]
-            robots[ridx].current_path = [(p['x'], p['y']) for p in schedule]
-            robots[ridx].remaining_distance = max(0, len(schedule) - 1)
-            print(f"Robot {robot_id} path: {robots[ridx].current_path}")
-
-    # Keep track of previous state to not run CBS when there are no changes
+    # Initialize planner state variables used later
     previous_active, previous_goals = state_check(robots)
     current_active, current_goals = state_check(robots)
- 
-    # End the simulation if nothing changes for 3 timesteps and CBS stalling (hopefully the tasks are done and the robots arent moving)
     time_steps_unchanged = 0
-
-    events = {
-        "new_tasks": 0,
-        "new_robots": 0,
-        "completed_tasks": 0,
-    }
-    idle_steps = {r.robot_id: 0 for r in robots} # track idleness of free robots
+    events = {"new_tasks": 0, "new_robots": 0, "completed_tasks": 0}
+    idle_steps = {r.robot_id: 0 for r in robots}
 
     for time_step in range(max_time_steps):
         # print(f"DEBUG STATEMENT 7 - TIME STEP {time_step+1}")
@@ -338,47 +394,50 @@ def main_simulation(
             print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
         
         if should_replan_cbs and start_positions and goal_positions:
+            # Build agents and compute A* paths for each independently (fallback to simple assignment)
             agents = build_cbs_agents(robots, start_positions, goal_positions)
 
-            print(f"DEBUG STATEMENT - ENVIRONMENT CREATED - AGENTS BUILT: {agents}")
+            print(f"DEBUG STATEMENT - AGENTS BUILT FOR ASTAR ASSIGNMENT: {agents}")
 
             # duplicate-start validation
             start_locations = [a['start'] for a in agents]
             if len(start_locations) != len(set(start_locations)):
-                print("ERROR: Duplicate start locations found in agent list. Aborting CBS.")
+                print("ERROR: Duplicate start locations found in agent list. Aborting replan.")
                 solution = None
             else:
-                env = Environment(dimension=map_dict['dimension'], agents=agents, obstacles=map_dict['obstacles'])
-                planner = CBS(env)
-                res = planner.search()
-                # print(f"CBS COMPLETE. New solution: {solution}")
 
-                print(f"DEBUG STATEMENT - CBS COMPLETE - NODES EXPANDED: {nodes_expanded}, CONFLICTS: {conflicts}")
+                # Compute A* per-agent paths in parallel using ProcessPoolExecutor
+                args = []
+                for a in agents:
+                    rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
+                    start = tuple(a['start'])
+                    goal = tuple(a['goal'])
+                    args.append((rid, start, goal, dims, obstacle_set))
 
-                if res:
-                    solution, nodes_expanded, conflicts = res
-                    print(f"CBS COMPLETE. New solution: {solution}")
-                    id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
-                    for robot_id, schedule in solution.items():
-                        ridx = id_to_index[robot_id]
-                        r = robots[ridx]
-                        r.current_path = [(p['x'], p['y']) for p in schedule]
-                        r.remaining_distance = max(0, len(schedule) - 1)
+                solution = {}
+                if args:
+                    max_workers = min(len(args), (os.cpu_count() or 1))
+                    ExecutorClass = concurrent.futures.ThreadPoolExecutor if use_threads else concurrent.futures.ProcessPoolExecutor
+                    with ExecutorClass(max_workers=max_workers) as ex:
+                        for rid, path in ex.map(_compute_agent_path, args):
+                            if path:
+                                solution[rid] = path
+                            else:
+                                print(f"Warning: no A* path found for agent {rid}")
+                                solution[rid] = None
 
-                    previous_active, previous_goals = state_check(robots)  # update to the post-replan state
-                    events = {k: 0 for k in events}  # reset counters we just consumed
+                # Assign computed paths back to robot objects
+                id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
+                for robot_id, path in solution.items():
+                    if path is None:
+                        continue
+                    if robot_id in id_to_index:
+                        r = robots[id_to_index[robot_id]]
+                        r.current_path = path
+                        r.remaining_distance = max(0, len(path) - 1)
 
-                    # print(f"DEBUG STATEMENT 16")
-                else:
-                    print("CBS failed to find a plan under current constraints.")
-                    # could possibly fall back on the simple method here if we get a lot of issues
-                    # but for now, we will just skip CBS and continue with the simulation
-                    print("Skipping CBS...")
-                    time_steps_unchanged += 1
-                    # print(f"DEBUG STATEMENT 17 - TIME STEPS UNCHANGED {time_steps_unchanged}")
-                    if time_steps_unchanged >= 3:
-                        print("No state change for 3 time steps, ending simulation.")
-                        break
+                previous_active, previous_goals = state_check(robots)  # update to the post-replan state
+                events = {k: 0 for k in events}  # reset counters we just consumed
         else:
             print("No state change, skip CBS...")
             print(f"ALL ROBOTS: {len(robots)}")
@@ -390,6 +449,7 @@ def main_simulation(
     # print(f"DEBUG STATEMENT 19")
     overall_success_rate = total_success / total_tasks
     print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, total reassignments: {total_reassignments}")
+    return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments)
 #     for robot in robots:
 #         print(f"Robot {robot.robot_id} attempted {robot.tasks_attempted} tasks and successfully completed {robot.tasks_successful} of them.")
 
@@ -412,7 +472,7 @@ def benchmark_simulation(
         robot_generation_strict: bool = True,
         task_generation_strict: bool = True):
     start_time = time.time()
-    main_simulation(
+    output_tuple = main_simulation(
         output, robots, tasks, num_candidates, voting_method, 
         grid, map_dict, suitability_method, suitability_matrix, 
         max_time_steps, add_tasks, add_robots, remove_robots, 
@@ -427,6 +487,8 @@ def benchmark_simulation(
     print(f"Simulation completed in {execution_time:.2f} seconds.")
     print(f"CPU Usage: {cpu_usage}%")
     print(f"Memory Usage: {memory_usage / (1024 * 1024)} MB")
+
+    return output_tuple + (execution_time, cpu_usage, memory_usage)
 
 if __name__ == "__main__":
         voting_methods = [
@@ -494,7 +556,13 @@ if __name__ == "__main__":
         }
         with open(os.path.join(dir_path, "simulation_results.csv"), mode="w", newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['Method', 'Suitability Method', 'Num Robots', 'Num Tasks', 'Num Candidates', 'Total Score', 'Task Normalized Score', 'Score Density', 'Length'])
+            writer.writerow([
+                'Method', 'Suitability Method', 'Num Robots', 
+                'Num Tasks', 'Num Candidates', 'Total Score', 
+                'Task Normalized Score', 'Score Density', 'Length', 
+                'total_reward', 'overall_success_rate', 'total_success', 
+                'total_reassignment_time', 'total_reassignment_score', 
+                'total_reassignments', 'Execution Time', 'CPU Usage', 'Memory Usage'])
             for num_robots in robot_sizes:
                 print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
                 task_sizes = [
@@ -517,6 +585,7 @@ if __name__ == "__main__":
                             for rep in range(num_repetitions):
                                 print(f"\n\n\nSTARTING SIMULATION REPETITION {rep+1}/{num_repetitions}")
                                 voting_outputs = []
+                                assignment_infos = []
                                 robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
                                 tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
                                 suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
@@ -531,28 +600,28 @@ if __name__ == "__main__":
                                         assigned_count = len(output[0]) if output and output[0] else 0
                                         task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0
                                         score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                        writer.writerow([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
+                                        assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
                                         voting_outputs.append(output)
                                     cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method_randomly(O.cbba_task_allocation, suitability_matrix, nc)
                                     assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
                                     task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
+                                    assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
                                     ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method_randomly(O.ssia_task_allocation, suitability_matrix, nc)
                                     assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
                                     task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
+                                    assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
                                     ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method_randomly(O.ilp_task_allocation, suitability_matrix, nc)
                                     assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
                                     task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
+                                    assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
                                     jv_output, jv_score, jv_length = O.assign_tasks_with_method_randomly(O.jv_task_allocation, suitability_matrix, nc)
                                     assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
                                     task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
+                                    assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
                                     outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
                                     
                                 else:
@@ -561,33 +630,36 @@ if __name__ == "__main__":
                                         assigned_count = len(output[0]) if output and output[0] else 0 # nuber of pairs in the chosen assignment
                                         task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0 # per assigned task normalized score
                                         score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                        writer.writerow([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
+                                        assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
                                         voting_outputs.append(output)
                                     cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method(O.cbba_task_allocation,suitability_matrix)
                                     assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
                                     task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
+                                    assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
                                     ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method(O.ssia_task_allocation,suitability_matrix)
                                     assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
                                     task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
+                                    assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
                                     ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method(O.ilp_task_allocation,suitability_matrix)
                                     assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
                                     task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
+                                    assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
                                     jv_output, jv_score, jv_length = O.assign_tasks_with_method(O.jv_task_allocation,suitability_matrix)
                                     assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
                                     task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
                                     score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    writer.writerow(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
+                                    assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
                                 outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
-                                for out, meth in zip(outputs, all_methods):
+                                for idx, (out, meth) in enumerate(zip(outputs, all_methods)):
                                     print(f"\n\n\nRUNNING SIMULATION FOR METHOD: {meth}")
-                                    benchmark_simulation(
+                                    output_tuple = benchmark_simulation(
                                         out, copy.deepcopy(robots), copy.deepcopy(tasks), 
                                         nc, meth, grid, map_dict, sm, suitability_matrix, 
                                         max_time_steps, add_tasks, add_robots, remove_robots, 
                                         10, 10, 10, robot_generation_strict, task_generation_strict)
+                                    # write a single combined row: assignment info + benchmark metrics
+                                    row_prefix = assignment_infos[idx] if idx < len(assignment_infos) else [str(meth), sm, num_robots, num_tasks, nc, 0, 0, 0, 0]
+                                    writer.writerow(row_prefix + list(output_tuple))
