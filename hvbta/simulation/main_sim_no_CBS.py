@@ -537,7 +537,7 @@ if __name__ == "__main__":
             S.evaluate_suitability_strict
             ]
         max_time_steps = 100
-        robot_sizes = [8, 10, 15]
+        robot_sizes = [5, 10, 15]
         # candidate_sizes = [5, 10, 15]
         num_repetitions = 1
         add_tasks = False
