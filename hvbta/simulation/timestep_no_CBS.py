@@ -33,7 +33,7 @@ def simulate_time_step(
 
     # Iterate through all robots to update their positions and tasks
     for robot in robots:
-        if robot.assigned and robot.current_task and not robot.current_path:  # Check that all assigned robots have a task
+        if robot.assigned and robot.current_task and robot.current_path:  # Check that all assigned robots have a task
             # Get the assigned task
             task = robot.current_task
 
