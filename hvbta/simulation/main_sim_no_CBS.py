@@ -177,19 +177,19 @@ def main_simulation(
         if r.assigned and r.current_task is not None
     }
 
-    print(f"ROBOTS: {[rob.robot_id for rob in robots]}")
-    print(f"TASKS: {[tas.task_id for tas in tasks]}")
-    print(f"ASSIGNED PAIRS: {assigned_pairs}")
-    print(f"ASSIGNED ROBOTS: {assigned_robots}")
-    print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-    print(f"UNASSIGNED TASKS: {unassigned_tasks}")
+    # print(f"ROBOTS: {[rob.robot_id for rob in robots]}")
+    # print(f"TASKS: {[tas.task_id for tas in tasks]}")
+    # print(f"ASSIGNED PAIRS: {assigned_pairs}")
+    # print(f"ASSIGNED ROBOTS: {assigned_robots}")
+    # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
+    # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
 
     # NOTE GOES HERE
     agents = build_cbs_agents(robots, start_positions, goal_positions)
 
     # Use module-level `astar` implementation for path computation (defined above)
 
-    print(f"AGENTS LIST: {agents}")
+    # print(f"AGENTS LIST: {agents}")
 
     # Build obstacle set and dims
     dims = map_dict['dimension']
@@ -248,17 +248,14 @@ def main_simulation(
     for time_step in range(max_time_steps):
         # print(f"DEBUG STATEMENT 7 - TIME STEP {time_step+1}")
         # print(f"\n--- Time Step {time_step + 1} ---")
-        # print(f"OCCUPIED POSITIONS: {occupied_positions}")
-        print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
-        print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
-        print(f"START POSITIONS: {start_positions}")
-        print(f"GOAL POSITIONS: {goal_positions}")
-        print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-        print(f"UNASSIGNED TASKS: {unassigned_tasks}")
-        # print(f"ALL ROBOTS: {len(robots)}")
-        # print(f"ALL TASKS: {len(tasks)}")
-        print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-        print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
+        # print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
+        # print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
+        # print(f"START POSITIONS: {start_positions}")
+        # print(f"GOAL POSITIONS: {goal_positions}")
+        # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
+        # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
+        # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
+        # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
 
         # before each time step, refresh the unassigned robots and tasks lists
         unassigned_robots = [r.robot_id for r in robots if not r.assigned]
@@ -383,21 +380,21 @@ def main_simulation(
                 else:
                     start_positions.pop(robot.robot_id, None)
                     goal_positions.pop(robot.robot_id, None)
-            print("***************************AFTER REASSIGNMENT***************************")
-            print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
-            print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
-            print(f"START POSITIONS: {start_positions}")
-            print(f"GOAL POSITONS: {goal_positions}")
-            print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-            print(f"UNASSIGNED TASKS: {unassigned_tasks}")
-            print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-            print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
+            # print("***************************AFTER REASSIGNMENT***************************")
+            # print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
+            # print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
+            # print(f"START POSITIONS: {start_positions}")
+            # print(f"GOAL POSITONS: {goal_positions}")
+            # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
+            # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
+            # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
+            # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
         
         if should_replan_cbs and start_positions and goal_positions:
             # Build agents and compute A* paths for each independently (fallback to simple assignment)
             agents = build_cbs_agents(robots, start_positions, goal_positions)
 
-            print(f"DEBUG STATEMENT - AGENTS BUILT FOR ASTAR ASSIGNMENT: {agents}")
+            # print(f"DEBUG STATEMENT - AGENTS BUILT FOR ASTAR ASSIGNMENT: {agents}")
 
             # duplicate-start validation
             start_locations = [a['start'] for a in agents]
@@ -440,10 +437,10 @@ def main_simulation(
                 events = {k: 0 for k in events}  # reset counters we just consumed
         else:
             print("No state change, skip CBS...")
-            print(f"ALL ROBOTS: {len(robots)}")
-            print(f"ALL TASKS: {len(tasks)}")
-            print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-            print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
+            # print(f"ALL ROBOTS: {len(robots)}")
+            # print(f"ALL TASKS: {len(tasks)}")
+            # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
+            # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
             # print(f"DEBUG STATEMENT 18")
 
     # print(f"DEBUG STATEMENT 19")
@@ -536,9 +533,9 @@ if __name__ == "__main__":
             S.evaluate_suitability_loose, 
             S.evaluate_suitability_strict
             ]
-        max_time_steps = 100
-        robot_sizes = [5, 10, 20, 30, 40, 50]
-        task_sizes = [5, 10, 20, 30, 40, 50]
+        max_time_steps = 500
+        robot_sizes = [5, 10, 20, 30, 40, 50, 100]
+        task_sizes = [5, 10, 20, 30, 40, 50, 100]
         # candidate_sizes = [5, 10, 15]
         num_repetitions = 1
         add_tasks = False

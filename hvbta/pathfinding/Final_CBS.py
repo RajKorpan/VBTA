@@ -459,7 +459,7 @@ class CBS(object):
     def search(self):
         """Perform CBS search"""
         start = HighLevelNode()
-        print(f"\n\n\n COMPUTING INITIAL SOLUTION\n\n\n")
+        # print(f"\n\n\n COMPUTING INITIAL SOLUTION\n\n\n")
         start.constraint_dict = {}
         for agent in self.env.agent_dict.keys():
             # INITIAL PROBLEM Every agent starts with an empty constraint set
@@ -482,7 +482,7 @@ class CBS(object):
 
         # Search open_set starting with the lowest cost nodes first, adding them to closed_set as we go
         while self.open_set:
-            print(f"\n\n\n EXPANDING HIGH LEVEL NODE {count} \n\n\n")
+            # print(f"\n\n\n EXPANDING HIGH LEVEL NODE {count} \n\n\n")
             # compares nodes based on cost of their solutions (uses __lt__ in HighLevelNode)
             # P = min(self.open_set)
             # self.open_set -= {P}
@@ -497,24 +497,24 @@ class CBS(object):
             # set the environment constraint dictionary to the current node's constraint dictionary
             # now the environment is configured with the specific set of rules required for this branch of the search tree
             self.env.constraint_dict = P.constraint_dict
-            print(f"GETTING FIRST CONFLICT")
+            # print(f"GETTING FIRST CONFLICT")
             # find first conflict
             conflict_dict = self.env.get_first_conflict(P.solution)
-            print(f"GOT FIRST CONFLICT")
+            # print(f"GOT FIRST CONFLICT")
 
             if not conflict_dict:
-                print(f"Solution found after expanding {len(self.closed_set)} high level nodes")
-                print(f"Total conflicts identified {total_conflicts}")
+                # print(f"Solution found after expanding {len(self.closed_set)} high level nodes")
+                # print(f"Total conflicts identified {total_conflicts}")
                 return self.generate_plan(P.solution), len(self.closed_set), total_conflicts
             
             total_conflicts += 1
-            print(f"CREATING CONSTRAINTS FROM CONFLICT")
+            # print(f"CREATING CONSTRAINTS FROM CONFLICT")
             # create new constraints from conflict to avoid it in future solutions
             constraint_dict = self.env.create_constraints_from_conflict(conflict_dict)
 
             # create a new node for each agent in the conflict with the new constraints added
             for agent in constraint_dict.keys():
-                print(f"ADDING CONSTRAINTS FOR AGENT {agent}")
+                # print(f"ADDING CONSTRAINTS FOR AGENT {agent}")
                 # copy entire parent node (all constraints and solution)
                 new_node = deepcopy(P)
                 # add new constraint to the specific agent
@@ -525,7 +525,7 @@ class CBS(object):
                     continue
 
                 self.env.constraint_dict = new_node.constraint_dict
-                print(f"RECOMPUTING SOLUTION FOR AGENT {agent}")
+                # print(f"RECOMPUTING SOLUTION FOR AGENT {agent}")
                 new_node.solution = self.env.compute_solution()
                 if not new_node.solution:
                     continue
