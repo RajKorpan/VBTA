@@ -537,7 +537,8 @@ if __name__ == "__main__":
             S.evaluate_suitability_strict
             ]
         max_time_steps = 100
-        robot_sizes = [5, 10, 15]
+        robot_sizes = [5, 10, 20, 30, 40, 50]
+        task_sizes = [5, 10, 20, 30, 40, 50]
         # candidate_sizes = [5, 10, 15]
         num_repetitions = 1
         add_tasks = False
@@ -555,7 +556,7 @@ if __name__ == "__main__":
             'dimension': dims,
             'obstacles': obstacles
         }
-        with open(os.path.join(dir_path, "simulation_results.csv"), mode="w", newline='') as file:
+        with open(os.path.join(dir_path, "open_medium_size_map_AStar_simulation_results.csv"), mode="w", newline='') as file:
             writer = csv.writer(file)
             writer.writerow([
                 'Method', 'Suitability Method', 'Num Robots', 
@@ -566,13 +567,13 @@ if __name__ == "__main__":
                 'total_reassignments', 'Execution Time', 'CPU Usage', 'Memory Usage'])
             for num_robots in robot_sizes:
                 print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
-                task_sizes = [
-                    # int(num_robots * 0.5),
-                    int(num_robots * 0.75),
-                    num_robots,
-                    int(num_robots * 1.25),
-                    # int(num_robots * 1.5)
-                ]
+                # task_sizes = [
+                #     # int(num_robots * 0.5),
+                #     int(num_robots * 0.75),
+                #     num_robots,
+                #     int(num_robots * 1.25),
+                #     # int(num_robots * 1.5)
+                # ]
                 for num_tasks in task_sizes:
                     print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                     candidate_sizes = [
