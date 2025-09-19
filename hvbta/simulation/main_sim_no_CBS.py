@@ -533,6 +533,43 @@ if __name__ == "__main__":
             S.evaluate_suitability_loose, 
             S.evaluate_suitability_strict
             ]
+        map_paths = [
+            r"arena.map",
+            r"den001d.map",
+            r"den009d.map",
+            r"den020d.map",
+            r"den101d.map",
+            r"den201d.map",
+            r"den202d.map",
+            r"den203d.map",
+            r"den204d.map",
+            r"den206d.map",
+            r"den207d.map",
+            r"den308d.map",
+            r"den312d.map",
+            r"den403d.map",
+            r"den404d.map",
+            r"den405d.map",
+            r"den407d.map",
+            r"den408d.map",
+            r"den900d.map",
+            r"den901d.map",
+            r"den998d.map",
+            r"hrt001d.map",
+            r"hrt002d.map",
+            r"isound1.map",
+            r"lak101d.map",
+            r"lak102d.map",
+            r"lak103d.map",
+            r"lak104d.map",
+            r"lak105d.map",
+            r"lak106d.map",
+            r"lak107d.map",
+            r"lak108d.map",
+            r"lak203d.map",
+            r"lak307d.map",
+            r"ost002d.map",
+        ]
         max_time_steps = 500
         robot_sizes = [5, 10, 20, 30, 40, 50, 100]
         task_sizes = [5, 10, 20, 30, 40, 50, 100]
@@ -543,122 +580,129 @@ if __name__ == "__main__":
         remove_robots = False
         robot_generation_strict = True
         task_generation_strict = True
-        map_file = r"test_small_open.map"
+        map_dir = r"MAPF_benchmark_maps"
+        full_paths = []
+        for m in map_paths:
+            full_paths.append(os.path.join(map_dir, m))
+        # map_file = r"test_small_open.map"
         # dir_path = r"hvbta\io\results"
         dir_path = os.path.join('hvbta', 'io', 'results')
-        grid = load_map(map_file) # 2D list of 0/1 representing the map
-        dims = (len(grid), len(grid[0])) # dimensions of the map grid
-        obstacles = create_obstacle_list(grid) # list of obstacle coordinates
-        map_dict = {
-            'dimension': dims,
-            'obstacles': obstacles
-        }
-        with open(os.path.join(dir_path, "open_medium_size_map_AStar_simulation_results.csv"), mode="w", newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                'Method', 'Suitability Method', 'Num Robots', 
-                'Num Tasks', 'Num Candidates', 'Total Score', 
-                'Task Normalized Score', 'Score Density', 'Length', 
-                'total_reward', 'overall_success_rate', 'total_success', 
-                'total_reassignment_time', 'total_reassignment_score', 
-                'total_reassignments', 'Execution Time', 'CPU Usage', 'Memory Usage'])
-            for num_robots in robot_sizes:
-                print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
-                # task_sizes = [
-                #     # int(num_robots * 0.5),
-                #     int(num_robots * 0.75),
-                #     num_robots,
-                #     int(num_robots * 1.25),
-                #     # int(num_robots * 1.5)
-                # ]
-                for num_tasks in task_sizes:
-                    print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
-                    candidate_sizes = [
-                        max(1, int(num_robots * 0.75)),
-                            max(1, int(num_tasks * 1)),
-                    ]
-                    for nc in candidate_sizes:
-                        print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
-                        for sm in suitability_methods:
-                            print(f"\n\n\nSTARTING SIMULATION FOR SUITABILITY METHOD: {sm}")
-                            for rep in range(num_repetitions):
-                                print(f"\n\n\nSTARTING SIMULATION REPETITION {rep+1}/{num_repetitions}")
-                                voting_outputs = []
-                                assignment_infos = []
-                                robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
-                                tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
-                                suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
-                                # while suitability_all_zero(suitability_matrix): #change this to just random assignment when there is all zeros
-                                #     robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
-                                #     tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
-                                #     suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
-                                if suitability_all_zero(suitability_matrix):
-                                    for method_idx in range(len(voting_methods)):
-                                        print("All suitability scores are zero, randomly assigning tasks to robots.")
-                                        output, score, length = V.assign_tasks_randomly(robots, tasks, suitability_matrix, nc)
-                                        assigned_count = len(output[0]) if output and output[0] else 0
-                                        task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0
-                                        score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                        assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
-                                        voting_outputs.append(output)
-                                    cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method_randomly(O.cbba_task_allocation, suitability_matrix, nc)
-                                    assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
-                                    task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
-                                    ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method_randomly(O.ssia_task_allocation, suitability_matrix, nc)
-                                    assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
-                                    task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
-                                    ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method_randomly(O.ilp_task_allocation, suitability_matrix, nc)
-                                    assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
-                                    task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
-                                    jv_output, jv_score, jv_length = O.assign_tasks_with_method_randomly(O.jv_task_allocation, suitability_matrix, nc)
-                                    assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
-                                    task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
+        # DO SIMULATION FOR ALL MAPS
+        for p in full_paths:
+            map_file = p
+            grid = load_map(map_file) # 2D list of 0/1 representing the map
+            dims = (len(grid), len(grid[0])) # dimensions of the map grid
+            obstacles = create_obstacle_list(grid) # list of obstacle coordinates
+            map_dict = {
+                'dimension': dims,
+                'obstacles': obstacles
+            }
+            with open(os.path.join(dir_path, f"simulation_results_{os.path.basename(map_file)}.csv"), mode="w", newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([
+                    'Method', 'Suitability Method', 'Num Robots', 
+                    'Num Tasks', 'Num Candidates', 'Total Score', 
+                    'Task Normalized Score', 'Score Density', 'Length', 
+                    'total_reward', 'overall_success_rate', 'total_success', 
+                    'total_reassignment_time', 'total_reassignment_score', 
+                    'total_reassignments', 'Execution Time', 'CPU Usage', 'Memory Usage'])
+                for num_robots in robot_sizes:
+                    print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
+                    # task_sizes = [
+                    #     # int(num_robots * 0.5),
+                    #     int(num_robots * 0.75),
+                    #     num_robots,
+                    #     int(num_robots * 1.25),
+                    #     # int(num_robots * 1.5)
+                    # ]
+                    for num_tasks in task_sizes:
+                        print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
+                        candidate_sizes = [
+                            max(1, int(num_robots * 0.75)),
+                                max(1, int(num_tasks * 1)),
+                        ]
+                        for nc in candidate_sizes:
+                            print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
+                            for sm in suitability_methods:
+                                print(f"\n\n\nSTARTING SIMULATION FOR SUITABILITY METHOD: {sm}")
+                                for rep in range(num_repetitions):
+                                    print(f"\n\n\nSTARTING SIMULATION REPETITION {rep+1}/{num_repetitions}")
+                                    voting_outputs = []
+                                    assignment_infos = []
+                                    robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
+                                    tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
+                                    suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
+                                    # while suitability_all_zero(suitability_matrix): #change this to just random assignment when there is all zeros
+                                    #     robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
+                                    #     tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
+                                    #     suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
+                                    if suitability_all_zero(suitability_matrix):
+                                        for method_idx in range(len(voting_methods)):
+                                            print("All suitability scores are zero, randomly assigning tasks to robots.")
+                                            output, score, length = V.assign_tasks_randomly(robots, tasks, suitability_matrix, nc)
+                                            assigned_count = len(output[0]) if output and output[0] else 0
+                                            task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0
+                                            score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                            assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
+                                            voting_outputs.append(output)
+                                        cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method_randomly(O.cbba_task_allocation, suitability_matrix, nc)
+                                        assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
+                                        task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
+                                        ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method_randomly(O.ssia_task_allocation, suitability_matrix, nc)
+                                        assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
+                                        task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
+                                        ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method_randomly(O.ilp_task_allocation, suitability_matrix, nc)
+                                        assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
+                                        task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
+                                        jv_output, jv_score, jv_length = O.assign_tasks_with_method_randomly(O.jv_task_allocation, suitability_matrix, nc)
+                                        assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
+                                        task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
+                                        outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
+
+                                    else:
+                                        for method_idx in range(len(voting_methods)):
+                                            output, score, length = V.assign_tasks_with_voting(robots, tasks, suitability_matrix, nc, voting_methods[method_idx])
+                                            assigned_count = len(output[0]) if output and output[0] else 0 # nuber of pairs in the chosen assignment
+                                            task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0 # per assigned task normalized score
+                                            score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                            assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
+                                            voting_outputs.append(output)
+                                        cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method(O.cbba_task_allocation,suitability_matrix)
+                                        assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
+                                        task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
+                                        ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method(O.ssia_task_allocation,suitability_matrix)
+                                        assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
+                                        task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
+                                        ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method(O.ilp_task_allocation,suitability_matrix)
+                                        assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
+                                        task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
+                                        jv_output, jv_score, jv_length = O.assign_tasks_with_method(O.jv_task_allocation,suitability_matrix)
+                                        assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
+                                        task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
+                                        score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
+                                        assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
                                     outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
-                                    
-                                else:
-                                    for method_idx in range(len(voting_methods)):
-                                        output, score, length = V.assign_tasks_with_voting(robots, tasks, suitability_matrix, nc, voting_methods[method_idx])
-                                        assigned_count = len(output[0]) if output and output[0] else 0 # nuber of pairs in the chosen assignment
-                                        task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0 # per assigned task normalized score
-                                        score_density = (score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                        assignment_infos.append([voting_names[method_idx], sm, num_robots, num_tasks, nc, score, task_normalized_score, score_density, length])
-                                        voting_outputs.append(output)
-                                    cbba_output, cbba_score, cbba_length = O.assign_tasks_with_method(O.cbba_task_allocation,suitability_matrix)
-                                    assigned_count = len(cbba_output[0]) if cbba_output and cbba_output[0] else 0 # nuber of pairs in the chosen assignment
-                                    task_normalized_score = (cbba_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (cbba_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["cbba_task_allocation", sm, num_robots, num_tasks, nc, cbba_score, task_normalized_score, score_density, cbba_length])
-                                    ssia_output, ssia_score, ssia_length = O.assign_tasks_with_method(O.ssia_task_allocation,suitability_matrix)
-                                    assigned_count = len(ssia_output[0]) if ssia_output and ssia_output[0] else 0
-                                    task_normalized_score = (ssia_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (ssia_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["ssia_task_allocation", sm, num_robots, num_tasks, nc, ssia_score, task_normalized_score, score_density, ssia_length])
-                                    ilp_output, ilp_score, ilp_length = O.assign_tasks_with_method(O.ilp_task_allocation,suitability_matrix)
-                                    assigned_count = len(ilp_output[0]) if ilp_output and ilp_output[0] else 0
-                                    task_normalized_score = (ilp_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (ilp_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["ilp_task_allocation", sm, num_robots, num_tasks, nc, ilp_score, task_normalized_score, score_density, ilp_length])
-                                    jv_output, jv_score, jv_length = O.assign_tasks_with_method(O.jv_task_allocation,suitability_matrix)
-                                    assigned_count = len(jv_output[0]) if jv_output and jv_output[0] else 0
-                                    task_normalized_score = (jv_score / assigned_count) if assigned_count > 0 else 0.0
-                                    score_density = (jv_score / (num_robots * num_tasks)) if (num_robots * num_tasks) > 0 else 0.0
-                                    assignment_infos.append(["jv_task_allocation", sm, num_robots, num_tasks, nc, jv_score, task_normalized_score, score_density, jv_length])
-                                outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
-                                for idx, (out, meth) in enumerate(zip(outputs, all_methods)):
-                                    print(f"\n\n\nRUNNING SIMULATION FOR METHOD: {meth}")
-                                    output_tuple = benchmark_simulation(
-                                        out, copy.deepcopy(robots), copy.deepcopy(tasks), 
-                                        nc, meth, grid, map_dict, sm, suitability_matrix, 
-                                        max_time_steps, add_tasks, add_robots, remove_robots, 
-                                        10, 10, 10, robot_generation_strict, task_generation_strict)
-                                    # write a single combined row: assignment info + benchmark metrics
-                                    row_prefix = assignment_infos[idx] if idx < len(assignment_infos) else [str(meth), sm, num_robots, num_tasks, nc, 0, 0, 0, 0]
-                                    writer.writerow(row_prefix + list(output_tuple))
+                                    for idx, (out, meth) in enumerate(zip(outputs, all_methods)):
+                                        print(f"\n\n\nRUNNING SIMULATION FOR METHOD: {meth}")
+                                        output_tuple = benchmark_simulation(
+                                            out, copy.deepcopy(robots), copy.deepcopy(tasks), 
+                                            nc, meth, grid, map_dict, sm, suitability_matrix, 
+                                            max_time_steps, add_tasks, add_robots, remove_robots, 
+                                            10, 10, 10, robot_generation_strict, task_generation_strict)
+                                        # write a single combined row: assignment info + benchmark metrics
+                                        row_prefix = assignment_infos[idx] if idx < len(assignment_infos) else [str(meth), sm, num_robots, num_tasks, nc, 0, 0, 0, 0]
+                                        writer.writerow(row_prefix + list(output_tuple))
