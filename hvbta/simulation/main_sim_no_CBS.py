@@ -6,6 +6,7 @@ import csv
 import os
 from typing import List
 import copy
+from numba import jit
 from hvbta.pathfinding.Final_CBS import CBS, Environment
 from hvbta.simulation.timestep_no_CBS import simulate_time_step
 import hvbta.allocators.voting as V
@@ -21,48 +22,86 @@ import hvbta.allocators.optimizers as O
 def suitability_all_zero(suitability_matrix):
     return all(value == 0 for row in suitability_matrix for value in row)
 
+@jit(nopython=True) # Tells Numba to compile this function for maximum speed
+def astar(start, goal, obstacle_array):
+    # A* remains the same, but we change how obstacles are checked
+    rows, cols = obstacle_array.shape
 
-def astar(start, goal, dims, obstacle_set):
-    # 4-connected grid A* (Manhattan heuristic)
-    rows, cols = dims
     def heuristic(a, b):
-        return abs(a[0]-b[0]) + abs(a[1]-b[1])
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-    def neighbors(node):
-        x, y = node
-        for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
-            nx, ny = x+dx, y+dy
-            if 0 <= nx < rows and 0 <= ny < cols and (nx, ny) not in obstacle_set:
-                yield (nx, ny)
-
-    open_heap = []
-    heapq.heappush(open_heap, (heuristic(start, goal), 0, start))
-    came_from = {}
+    # Numba doesn't have a direct 'neighbors' generator, so we make it a simple loop
+    open_heap = [(heuristic(start, goal), 0, start)]
+    came_from = {start: (-1, -1)} # Use a dummy value for the start node's parent
     gscore = {start: 0}
 
-    while open_heap:
+    while len(open_heap) > 0:
         f, g, current = heapq.heappop(open_heap)
+
         if current == goal:
-            # reconstruct path
-            path = [current]
-            while current in came_from:
-                current = came_from[current]
+            path = []
+            while current != (-1, -1):
                 path.append(current)
-            return list(reversed(path))
-        for neigh in neighbors(current):
-            tentative_g = gscore[current] + 1
-            if tentative_g < gscore.get(neigh, float('inf')):
-                came_from[neigh] = current
-                gscore[neigh] = tentative_g
-                heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
-    return None  # no path found
+                current = came_from[current]
+            return path[::-1] # Path reconstruction
+
+        # Neighbor checking loop
+        x, y = current
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+
+            # --- CHANGE THIS CHECK ---
+            # Check bounds and use the NumPy array
+            if 0 <= nx < rows and 0 <= ny < cols and not obstacle_array[nx, ny]:
+                neigh = (nx, ny)
+                tentative_g = g + 1
+                if tentative_g < gscore.get(neigh, np.inf):
+                    came_from[neigh] = current
+                    gscore[neigh] = tentative_g
+                    heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
+
+    return [] # Return empty list for no path
+# def astar(start, goal, dims, obstacle_set):
+#     # 4-connected grid A* (Manhattan heuristic)
+#     rows, cols = dims
+#     def heuristic(a, b):
+#         return abs(a[0]-b[0]) + abs(a[1]-b[1])
+
+#     def neighbors(node):
+#         x, y = node
+#         for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+#             nx, ny = x+dx, y+dy
+#             if 0 <= nx < rows and 0 <= ny < cols and (nx, ny) not in obstacle_set:
+#                 yield (nx, ny)
+
+#     open_heap = []
+#     heapq.heappush(open_heap, (heuristic(start, goal), 0, start))
+#     came_from = {}
+#     gscore = {start: 0}
+
+#     while open_heap:
+#         f, g, current = heapq.heappop(open_heap)
+#         if current == goal:
+#             # reconstruct path
+#             path = [current]
+#             while current in came_from:
+#                 current = came_from[current]
+#                 path.append(current)
+#             return list(reversed(path))
+#         for neigh in neighbors(current):
+#             tentative_g = gscore[current] + 1
+#             if tentative_g < gscore.get(neigh, float('inf')):
+#                 came_from[neigh] = current
+#                 gscore[neigh] = tentative_g
+#                 heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
+#     return None  # no path found
 
 
 def _compute_agent_path(args):
-    # args: (rid, start, goal, dims, obstacle_set)
-    rid, start, goal, dims, obstacle_set = args
+    # args: (rid, start, goal, dims, obstacle_array)
+    rid, start, goal, dims, obstacle_array = args
     try:
-        path = astar(start, goal, dims, obstacle_set)
+        path = astar(start, goal, dims, obstacle_array)
     except Exception:
         path = None
     return (rid, path)
@@ -139,6 +178,7 @@ def main_simulation(
     total_reassignment_time = 0.0
     total_reassignment_score = 0.0
     total_reassignments = 0
+    total_time_steps = 500
 
     # print(f"DEBUG STATEMENT 2")
 
@@ -193,14 +233,15 @@ def main_simulation(
 
     # Build obstacle set and dims
     dims = map_dict['dimension']
-    def get_obstacle_set(grid):
-        obstacle_set = set()
-        for r in range(len(grid)):
-            for c in range(len(grid[r])):
-                if grid[r][c] == 1:
-                    obstacle_set.add((r, c))
-        return obstacle_set
-    obstacle_set = get_obstacle_set(grid)
+    # def get_obstacle_set(grid):
+    #     obstacle_set = set()
+    #     for r in range(len(grid)):
+    #         for c in range(len(grid[r])):
+    #             if grid[r][c] == 1:
+    #                 obstacle_set.add((r, c))
+    #     return obstacle_set
+    # obstacle_set = get_obstacle_set(grid)
+    obstacle_array = np.array(grid, dtype=np.bool_)
 
     # Compute A* path for each assigned agent independently (parallelized)
     # agents is a list of dicts with 'name', 'start', 'goal' per build_cbs_agents output
@@ -209,7 +250,7 @@ def main_simulation(
         rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
         start = tuple(a['start'])
         goal = tuple(a['goal'])
-        args.append((rid, start, goal, dims, obstacle_set))
+        args.append((rid, start, goal, dims, obstacle_array))
 
     solution = {}
     if args:
@@ -271,7 +312,8 @@ def main_simulation(
         # print(f"DEBUG STATEMENT 8")
 
         if len(tasks) == 0:
-            print(f"All tasks completed in {time_step} time steps!")
+            print(f"All tasks completed in {time_step + 1} time steps!")
+            total_time_steps = time_step + 1
             break
         events["completed_tasks"] += completed_this_step # track number of tasks completed
         should_replan_cbs = completed_this_step > 0
@@ -351,7 +393,7 @@ def main_simulation(
 
         # Reassign unassigned robots to unassigned tasks
         if should_replan and start_positions and goal_positions:
-            print("State change, re-run CBS...")
+            # print("State change, re-run CBS...")
             # NOTE: here we need to reassign tasks based on the method used, voting vs optimizer
             if voting_method in voting_methods:
                 print(f"REASSIGNING WITH VOTING METHOD: {voting_method_name}")
@@ -409,7 +451,7 @@ def main_simulation(
                     rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
                     start = tuple(a['start'])
                     goal = tuple(a['goal'])
-                    args.append((rid, start, goal, dims, obstacle_set))
+                    args.append((rid, start, goal, dims, obstacle_array))
 
                 solution = {}
                 if args:
@@ -435,8 +477,9 @@ def main_simulation(
 
                 previous_active, previous_goals = state_check(robots)  # update to the post-replan state
                 events = {k: 0 for k in events}  # reset counters we just consumed
-        else:
-            print("No state change, skip CBS...")
+        # else:
+        #     print("No state change, skip CBS...")
+            
             # print(f"ALL ROBOTS: {len(robots)}")
             # print(f"ALL TASKS: {len(tasks)}")
             # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
@@ -446,7 +489,7 @@ def main_simulation(
     # print(f"DEBUG STATEMENT 19")
     overall_success_rate = total_success / total_tasks
     print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, total reassignments: {total_reassignments}")
-    return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments)
+    return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments, min(total_time_steps, max_time_steps))
 #     for robot in robots:
 #         print(f"Robot {robot.robot_id} attempted {robot.tasks_attempted} tasks and successfully completed {robot.tasks_successful} of them.")
 
@@ -533,46 +576,48 @@ if __name__ == "__main__":
             S.evaluate_suitability_loose, 
             S.evaluate_suitability_strict
             ]
+        # NOTE : choose 5 maps that vary in size and complexity for testing
         map_paths = [
             r"arena.map",
             r"den001d.map",
             r"den009d.map",
             r"den020d.map",
             r"den101d.map",
-            r"den201d.map",
-            r"den202d.map",
-            r"den203d.map",
-            r"den204d.map",
-            r"den206d.map",
-            r"den207d.map",
-            r"den308d.map",
-            r"den312d.map",
-            r"den403d.map",
-            r"den404d.map",
-            r"den405d.map",
-            r"den407d.map",
-            r"den408d.map",
-            r"den900d.map",
-            r"den901d.map",
-            r"den998d.map",
-            r"hrt001d.map",
-            r"hrt002d.map",
-            r"isound1.map",
-            r"lak101d.map",
-            r"lak102d.map",
-            r"lak103d.map",
-            r"lak104d.map",
-            r"lak105d.map",
-            r"lak106d.map",
-            r"lak107d.map",
-            r"lak108d.map",
-            r"lak203d.map",
-            r"lak307d.map",
-            r"ost002d.map",
+            # r"den201d.map",
+            # r"den202d.map",
+            # r"den203d.map",
+            # r"den204d.map",
+            # r"den206d.map",
+            # r"den207d.map",
+            # r"den308d.map",
+            # r"den312d.map",
+            # r"den403d.map",
+            # r"den404d.map",
+            # r"den405d.map",
+            # r"den407d.map",
+            # r"den408d.map",
+            # r"den900d.map",
+            # r"den901d.map",
+            # r"den998d.map",
+            # r"hrt001d.map",
+            # r"hrt002d.map",
+            # r"isound1.map",
+            # r"lak101d.map",
+            # r"lak102d.map",
+            # r"lak103d.map",
+            # r"lak104d.map",
+            # r"lak105d.map",
+            # r"lak106d.map",
+            # r"lak107d.map",
+            # r"lak108d.map",
+            # r"lak203d.map",
+            # r"lak307d.map",
+            # r"ost002d.map",
         ]
         max_time_steps = 500
-        robot_sizes = [5, 10, 20, 30, 40, 50, 100]
-        task_sizes = [5, 10, 20, 30, 40, 50, 100]
+        # [10, 20, 30, 40, 50] sizes to make things faster to run for testing
+        robot_sizes = [10, 20, 30, 40, 50]
+        task_sizes = [10, 20, 30, 40, 50]
         # candidate_sizes = [5, 10, 15]
         num_repetitions = 1
         add_tasks = False
@@ -605,7 +650,7 @@ if __name__ == "__main__":
                     'Task Normalized Score', 'Score Density', 'Length', 
                     'total_reward', 'overall_success_rate', 'total_success', 
                     'total_reassignment_time', 'total_reassignment_score', 
-                    'total_reassignments', 'Execution Time', 'CPU Usage', 'Memory Usage'])
+                    'total_reassignments', 'Total Time Steps', 'Execution Time', 'CPU Usage', 'Memory Usage'])
                 for num_robots in robot_sizes:
                     print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
                     # task_sizes = [
@@ -617,9 +662,10 @@ if __name__ == "__main__":
                     # ]
                     for num_tasks in task_sizes:
                         print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
+                        # use partial candidate sizes for faster testing and also to say voting doesnt need to use whole suitability matrix
                         candidate_sizes = [
+                            max(1, int(num_robots * 0.5)),
                             max(1, int(num_robots * 0.75)),
-                                max(1, int(num_tasks * 1)),
                         ]
                         for nc in candidate_sizes:
                             print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")

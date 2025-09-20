@@ -9,4 +9,4 @@ Processed_Benchmarks/
 *.yaml
 cbs_test.ipynb
 git-filter-repo
-hvbta/io/results/*.csv
+hvbta/io/results/

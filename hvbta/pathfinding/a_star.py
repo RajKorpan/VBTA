@@ -1,3 +1,6 @@
+# MUST USE NUMBA JIT COMPILER TO SPEED UP 
+# OTHERWISE TESTING CAN TAKE 10 HOURS WITH REASONABLE SIZE PROBLEMS
+
 class AStar():
     def __init__(self, env):
         self.agent_dict = env.agent_dict
