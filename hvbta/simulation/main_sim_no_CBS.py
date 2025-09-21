@@ -6,7 +6,9 @@ import csv
 import os
 from typing import List
 import copy
-from numba import jit
+from numba import jit, types
+import numba
+from numba.typed import List
 from hvbta.pathfinding.Final_CBS import CBS, Environment
 from hvbta.simulation.timestep_no_CBS import simulate_time_step
 import hvbta.allocators.voting as V
@@ -22,17 +24,18 @@ import hvbta.allocators.optimizers as O
 def suitability_all_zero(suitability_matrix):
     return all(value == 0 for row in suitability_matrix for value in row)
 
-@jit(nopython=True) # Tells Numba to compile this function for maximum speed
+# In main_sim_no_CBS.py
+
+@jit(nopython=True)
 def astar(start, goal, obstacle_array):
-    # A* remains the same, but we change how obstacles are checked
     rows, cols = obstacle_array.shape
 
-    def heuristic(a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
-
-    # Numba doesn't have a direct 'neighbors' generator, so we make it a simple loop
-    open_heap = [(heuristic(start, goal), 0, start)]
-    came_from = {start: (-1, -1)} # Use a dummy value for the start node's parent
+    # def heuristic(a, b):
+    #     return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    
+    # Using a typed List and Dict for Numba compatibility
+    open_heap = [(abs(start[0] - goal[0]) + abs(start[1] - goal[1]), 0, start)]
+    came_from = {start: (-1, -1)} # dummy value for the start node
     gscore = {start: 0}
 
     while len(open_heap) > 0:
@@ -43,24 +46,25 @@ def astar(start, goal, obstacle_array):
             while current != (-1, -1):
                 path.append(current)
                 current = came_from[current]
-            return path[::-1] # Path reconstruction
+            return path[::-1] # list of tuples
 
-        # Neighbor checking loop
         x, y = current
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nx, ny = x + dx, y + dy
-
-            # --- CHANGE THIS CHECK ---
-            # Check bounds and use the NumPy array
+            
+            # check that nx and ny are in bounds (0 <= nx < rows) and not on an obstacle in the bool obstacle_array (0 for free, 1 for obstacle)
             if 0 <= nx < rows and 0 <= ny < cols and not obstacle_array[nx, ny]:
                 neigh = (nx, ny)
                 tentative_g = g + 1
-                if tentative_g < gscore.get(neigh, np.inf):
+                
+                # Replace np.inf (a float) with a very large integer.
+                if tentative_g < gscore.get(neigh, 999999999):
                     came_from[neigh] = current
                     gscore[neigh] = tentative_g
-                    heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
+                    new_f = tentative_g + (abs(neigh[0] - goal[0]) + abs(neigh[1] - goal[1]))
+                    heapq.heappush(open_heap, (new_f, tentative_g, neigh))
 
-    return [] # Return empty list for no path
+    return [(-1, -1)] # no path found, dummy path returned
 # def astar(start, goal, dims, obstacle_set):
 #     # 4-connected grid A* (Manhattan heuristic)
 #     rows, cols = dims
@@ -98,11 +102,12 @@ def astar(start, goal, obstacle_array):
 
 
 def _compute_agent_path(args):
-    # args: (rid, start, goal, dims, obstacle_array)
-    rid, start, goal, dims, obstacle_array = args
+    # args: (rid, start, goal, obstacle_array)
+    rid, start, goal, obstacle_array = args
     try:
-        path = astar(start, goal, dims, obstacle_array)
-    except Exception:
+        path = astar(start, goal, obstacle_array)
+    except Exception as e:
+        print(f"Error in A* for agent {rid}: {e}")
         path = None
     return (rid, path)
 
@@ -250,7 +255,7 @@ def main_simulation(
         rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
         start = tuple(a['start'])
         goal = tuple(a['goal'])
-        args.append((rid, start, goal, dims, obstacle_array))
+        args.append((rid, start, goal, obstacle_array))
 
     solution = {}
     if args:
@@ -451,7 +456,7 @@ def main_simulation(
                     rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
                     start = tuple(a['start'])
                     goal = tuple(a['goal'])
-                    args.append((rid, start, goal, dims, obstacle_array))
+                    args.append((rid, start, goal, obstacle_array))
 
                 solution = {}
                 if args:
@@ -579,10 +584,10 @@ if __name__ == "__main__":
         # NOTE : choose 5 maps that vary in size and complexity for testing
         map_paths = [
             r"arena.map",
-            r"den001d.map",
-            r"den009d.map",
-            r"den020d.map",
-            r"den101d.map",
+            # r"den001d.map",
+            # r"den009d.map",
+            # r"den020d.map",
+            # r"den101d.map",
             # r"den201d.map",
             # r"den202d.map",
             # r"den203d.map",
@@ -614,7 +619,7 @@ if __name__ == "__main__":
             # r"lak307d.map",
             # r"ost002d.map",
         ]
-        max_time_steps = 500
+        max_time_steps = 250
         # [10, 20, 30, 40, 50] sizes to make things faster to run for testing
         robot_sizes = [10, 20, 30, 40, 50]
         task_sizes = [10, 20, 30, 40, 50]
