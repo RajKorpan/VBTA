@@ -184,7 +184,8 @@ def generate_random_robot_profile_strict(robot_id: str, grid: List[List[int]], o
         tasks_attempted=0,
         tasks_successful=0,
         current_path=[],
-        assigned=False
+        assigned=False,
+        strict_profile_name=p.get("name", "")
     )
 
 def generate_random_task_description_strict(task_id: str, grid: List[List[int]], occupied_locations: set, tasks, choice = -1) -> TaskDescription:
@@ -215,5 +216,6 @@ def generate_random_task_description_strict(task_id: str, grid: List[List[int]],
         success_criteria="Task completed within time window",
         assigned_robot=None,
         time_to_complete=float(p.get("duration", 10.0)),
-        assigned=False
+        assigned=False,
+        strict_profile_name=p.get("task_type", "")
     )

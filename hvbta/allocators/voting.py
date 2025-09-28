@@ -369,7 +369,7 @@ def assign_tasks_randomly(
 
     filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
 
-    print(f"Best assignment in voting {filtered_best_assignments}")
+    # print(f"Best assignment in voting {filtered_best_assignments}")
 
     # best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)
 
@@ -442,13 +442,13 @@ def reassign_robots_to_tasks(
         if current is None:
             continue
         current_suitability = suitability_method(current, task)
-        print(f"Better suitability in reassigning: {current_suitability}")
+        # print(f"Better suitability in reassigning: {current_suitability}")
         # find the best free robot for this task
         best, best_suit = None, current_suitability
         for r in free_robots:
             s = suitability_method(r, task)
             if s > best_suit:
-                print(f"Better suitability in reassigning: {s}")
+                # print(f"Better suitability in reassigning: {s}")
                 best, best_suit = r, s
         # Inertia check: if the best free robot's suitability is not significantly better, skip stealing
         if best and (best_suit - current_suitability) >= inertia_threshold:
@@ -469,6 +469,6 @@ def reassign_robots_to_tasks(
             if best.robot_id in unassigned_robots:
                 unassigned_robots.remove(best.robot_id)
     
-    print(f"Reassign Score: {score}, Reassign Length: {length}")
+    # print(f"Reassign Score: {score}, Reassign Length: {length}")
 
     return return_assignments, unassigned_robots, unassigned_tasks, score, length

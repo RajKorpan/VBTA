@@ -302,8 +302,6 @@ def evaluate_suitability_new(robot: CapabilityProfile, task: TaskDescription) ->
 
     return max(0.0, min(1.0, final_score))
 
-
-
 def evaluate_suitability_loose(robot: CapabilityProfile, task: TaskDescription) -> float:
     """
     Evaluates the suitability of a robot for a given task.
@@ -1131,8 +1129,6 @@ def calculate_suitability_matrix(robots: List[CapabilityProfile], tasks: List[Ta
     Returns:
         suitability_matrix: A 2D numpy array representing the suitability scores of each robot-task pair.
     """
-    num_robots = len(robots)
-    num_tasks = len(tasks)
     suitability_matrix = np.zeros((len(robots), len(tasks)), dtype=float)
 
     # Evaluate suitability of each robot for each task

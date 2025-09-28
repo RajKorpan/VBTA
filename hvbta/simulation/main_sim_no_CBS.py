@@ -6,8 +6,7 @@ import csv
 import os
 from typing import List
 import copy
-from numba import jit, types
-import numba
+from numba import jit
 from numba.typed import List
 from hvbta.pathfinding.Final_CBS import CBS, Environment
 from hvbta.simulation.timestep_no_CBS import simulate_time_step
@@ -15,7 +14,7 @@ import hvbta.allocators.voting as V
 import hvbta.suitability as S
 from hvbta.pathfinding.CBS import load_map, create_obstacle_list, build_cbs_agents
 from hvbta.allocators.misc_assignment import add_new_tasks, add_new_robots, remove_random_robots
-from hvbta.generation import generate_random_robot_profile_strict, generate_random_task_description_strict
+import hvbta.generation as G
 from hvbta.models import CapabilityProfile, TaskDescription
 import heapq
 import concurrent.futures
@@ -29,9 +28,6 @@ def suitability_all_zero(suitability_matrix):
 @jit(nopython=True)
 def astar(start, goal, obstacle_array):
     rows, cols = obstacle_array.shape
-
-    # def heuristic(a, b):
-    #     return abs(a[0] - b[0]) + abs(a[1] - b[1])
     
     # Using a typed List and Dict for Numba compatibility
     open_heap = [(abs(start[0] - goal[0]) + abs(start[1] - goal[1]), 0, start)]
@@ -65,41 +61,6 @@ def astar(start, goal, obstacle_array):
                     heapq.heappush(open_heap, (new_f, tentative_g, neigh))
 
     return [(-1, -1)] # no path found, dummy path returned
-# def astar(start, goal, dims, obstacle_set):
-#     # 4-connected grid A* (Manhattan heuristic)
-#     rows, cols = dims
-#     def heuristic(a, b):
-#         return abs(a[0]-b[0]) + abs(a[1]-b[1])
-
-#     def neighbors(node):
-#         x, y = node
-#         for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
-#             nx, ny = x+dx, y+dy
-#             if 0 <= nx < rows and 0 <= ny < cols and (nx, ny) not in obstacle_set:
-#                 yield (nx, ny)
-
-#     open_heap = []
-#     heapq.heappush(open_heap, (heuristic(start, goal), 0, start))
-#     came_from = {}
-#     gscore = {start: 0}
-
-#     while open_heap:
-#         f, g, current = heapq.heappop(open_heap)
-#         if current == goal:
-#             # reconstruct path
-#             path = [current]
-#             while current in came_from:
-#                 current = came_from[current]
-#                 path.append(current)
-#             return list(reversed(path))
-#         for neigh in neighbors(current):
-#             tentative_g = gscore[current] + 1
-#             if tentative_g < gscore.get(neigh, float('inf')):
-#                 came_from[neigh] = current
-#                 gscore[neigh] = tentative_g
-#                 heapq.heappush(open_heap, (tentative_g + heuristic(neigh, goal), tentative_g, neigh))
-#     return None  # no path found
-
 
 def _compute_agent_path(args):
     # args: (rid, start, goal, obstacle_array)
@@ -151,9 +112,8 @@ def main_simulation(
         # If True, use ThreadPoolExecutor instead of ProcessPoolExecutor for parallel A*.
         # Threads avoid multiprocessing pickling/Windows spawn issues but may be slower
         # for CPU-bound A* due to the GIL. Default is False (use processes).
-        use_threads: bool = False):
+        use_threads: bool = True):
     print(f"SUITABILITY METHOD: {suitability_method}")
-    # print(f"DEBUG STATEMENT 1")
 
     voting_methods = {
         V.rank_assignments_borda: "Borda Count",
@@ -184,8 +144,6 @@ def main_simulation(
     total_reassignment_score = 0.0
     total_reassignments = 0
     total_time_steps = 500
-
-    # print(f"DEBUG STATEMENT 2")
 
     for r in robots:
         # add the robot's initial position to the occupied positions set
@@ -222,30 +180,10 @@ def main_simulation(
         if r.assigned and r.current_task is not None
     }
 
-    # print(f"ROBOTS: {[rob.robot_id for rob in robots]}")
-    # print(f"TASKS: {[tas.task_id for tas in tasks]}")
-    # print(f"ASSIGNED PAIRS: {assigned_pairs}")
-    # print(f"ASSIGNED ROBOTS: {assigned_robots}")
-    # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-    # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
-
-    # NOTE GOES HERE
     agents = build_cbs_agents(robots, start_positions, goal_positions)
-
-    # Use module-level `astar` implementation for path computation (defined above)
-
-    # print(f"AGENTS LIST: {agents}")
 
     # Build obstacle set and dims
     dims = map_dict['dimension']
-    # def get_obstacle_set(grid):
-    #     obstacle_set = set()
-    #     for r in range(len(grid)):
-    #         for c in range(len(grid[r])):
-    #             if grid[r][c] == 1:
-    #                 obstacle_set.add((r, c))
-    #     return obstacle_set
-    # obstacle_set = get_obstacle_set(grid)
     obstacle_array = np.array(grid, dtype=np.bool_)
 
     # Compute A* path for each assigned agent independently (parallelized)
@@ -274,11 +212,6 @@ def main_simulation(
     for robot_id, path in solution.items():
         if path is None:
             continue
-        # if robot_id not in id_to_index:
-        #     for idx, r in enumerate(robots):
-        #         if getattr(r, "robot_id", None) == robot_id or getattr(r, "name", None) == robot_id:
-        #             id_to_index[robot_id] = idx
-        #             break
         if robot_id in id_to_index:
             r = robots[id_to_index[robot_id]]
             r.current_path = path
@@ -292,16 +225,6 @@ def main_simulation(
     idle_steps = {r.robot_id: 0 for r in robots}
 
     for time_step in range(max_time_steps):
-        # print(f"DEBUG STATEMENT 7 - TIME STEP {time_step+1}")
-        # print(f"\n--- Time Step {time_step + 1} ---")
-        # print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
-        # print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
-        # print(f"START POSITIONS: {start_positions}")
-        # print(f"GOAL POSITIONS: {goal_positions}")
-        # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-        # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
-        # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-        # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
 
         # before each time step, refresh the unassigned robots and tasks lists
         unassigned_robots = [r.robot_id for r in robots if not r.assigned]
@@ -313,8 +236,6 @@ def main_simulation(
             suitability_method, occupied_positions, start_positions, 
             goal_positions, 1.0, total_reward, total_success
         )
-
-        # print(f"DEBUG STATEMENT 8")
 
         if len(tasks) == 0:
             print(f"All tasks completed in {time_step + 1} time steps!")
@@ -334,8 +255,6 @@ def main_simulation(
             )
             events["new_tasks"] += num_of_tasks_added # track number of tasks added
 
-        # print(f"DEBUG STATEMENT 9")
-
         if add_robots and time_step + 1 <= 4 and random.random() < 0.5: # add robots only in the first 4 time steps, and randomly
             print(f"ADDING NEW ROBOTS AT TIME STEP {time_step + 1}")
             num_of_robots_added = random.randint(0, robots_to_add)
@@ -349,22 +268,17 @@ def main_simulation(
                 if r.robot_id not in idle_steps:
                     idle_steps[r.robot_id] = 0
 
-        # print(f"DEBUG STATEMENT 10")
-
         # Periodically remove robots
         if remove_robots and time_step + 1 <= 4 and random.random() < 0.5: # remove robots only in the first 4 time steps, and randomly
             if len(assigned_robots) > 1: # Otherwise will break CBS, we need at least one agent for things to run smoothly
                 print(f"REMOVING RANDOM ROBOTS AT TIME STEP {time_step + 1}")
                 remove_random_robots(robots, tasks, unassigned_robots, unassigned_tasks, random.randint(0, robots_to_remove), occupied_positions, start_positions, goal_positions)
 
-        # print(f"DEBUG STATEMENT 11")
-
         for r in robots:
             if not r.assigned:
                 idle_steps[r.robot_id] = idle_steps.get(r.robot_id, 0) + 1 # update idle steps of unassigned robots
             else:
                 idle_steps[r.robot_id] = 0
-        # stalling_robot = any(value >= 5 for value in idle_steps.values()) # if any robot has been idle for 5 or more steps, consider it stalling
         
         # Update start and goal positions before cbs
         for robot in robots:
@@ -378,8 +292,6 @@ def main_simulation(
         # update planning signatures
         current_active, current_goals = state_check(robots)
 
-        # print(f"DEBUG STATEMENT 12")
-
         # Update assigned robots
         assigned_robots = {r.robot_id: r.current_task.task_id for r in robots if r.assigned and r.current_task}
 
@@ -390,16 +302,13 @@ def main_simulation(
                 should_replan = True
             elif (current_active != previous_active) or (current_goals != previous_goals):
                 should_replan = True
-            # elif stalling_robot:
-            #     should_replan = True
 
         if should_replan:
             should_replan_cbs = True
 
         # Reassign unassigned robots to unassigned tasks
         if should_replan and start_positions and goal_positions:
-            # print("State change, re-run CBS...")
-            # NOTE: here we need to reassign tasks based on the method used, voting vs optimizer
+
             if voting_method in voting_methods:
                 print(f"REASSIGNING WITH VOTING METHOD: {voting_method_name}")
                 total_reassignments += 1
@@ -417,8 +326,6 @@ def main_simulation(
             total_reassignment_time  += reassign_length
             total_reassignment_score += reassign_score
 
-            # print(f"DEBUG STATEMENT 13")
-
             # rebuild starts/goals after potential changes from reassignment
             for robot in robots:
                 if robot.assigned and robot.current_task:
@@ -427,76 +334,48 @@ def main_simulation(
                 else:
                     start_positions.pop(robot.robot_id, None)
                     goal_positions.pop(robot.robot_id, None)
-            # print("***************************AFTER REASSIGNMENT***************************")
-            # print(f"AMOUNT OF ASSIGNED ROBOTS: {len([rob.current_task for rob in robots])}")
-            # print(f"ASSIGNED ROBOTS: {[rob.assigned for rob in robots].count(True)}")
-            # print(f"START POSITIONS: {start_positions}")
-            # print(f"GOAL POSITONS: {goal_positions}")
-            # print(f"UNASSIGNED ROBOTS: {unassigned_robots}")
-            # print(f"UNASSIGNED TASKS: {unassigned_tasks}")
-            # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-            # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
         
         if should_replan_cbs and start_positions and goal_positions:
             # Build agents and compute A* paths for each independently (fallback to simple assignment)
             agents = build_cbs_agents(robots, start_positions, goal_positions)
 
-            # print(f"DEBUG STATEMENT - AGENTS BUILT FOR ASTAR ASSIGNMENT: {agents}")
+            # Compute A* per-agent paths in parallel using ProcessPoolExecutor
+            args = []
+            for a in agents:
+                rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
+                start = tuple(a['start'])
+                goal = tuple(a['goal'])
+                args.append((rid, start, goal, obstacle_array))
 
-            # duplicate-start validation
-            start_locations = [a['start'] for a in agents]
-            if len(start_locations) != len(set(start_locations)):
-                print("ERROR: Duplicate start locations found in agent list. Aborting replan.")
-                solution = None
-            else:
+            solution = {}
+            if args:
+                max_workers = min(len(args), (os.cpu_count() or 1))
+                ExecutorClass = concurrent.futures.ThreadPoolExecutor if use_threads else concurrent.futures.ProcessPoolExecutor
+                with ExecutorClass(max_workers=max_workers) as ex:
+                    for rid, path in ex.map(_compute_agent_path, args):
+                        if path:
+                            solution[rid] = path
+                        else:
+                            print(f"Warning: no A* path found for agent {rid}")
+                            solution[rid] = None
 
-                # Compute A* per-agent paths in parallel using ProcessPoolExecutor
-                args = []
-                for a in agents:
-                    rid = a['name'].robot_id if hasattr(a['name'], 'robot_id') else a['name']
-                    start = tuple(a['start'])
-                    goal = tuple(a['goal'])
-                    args.append((rid, start, goal, obstacle_array))
+            # Assign computed paths back to robot objects
+            id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
+            for robot_id, path in solution.items():
+                if path is None:
+                    continue
+                if robot_id in id_to_index:
+                    r = robots[id_to_index[robot_id]]
+                    r.current_path = path
+                    r.remaining_distance = max(0, len(path) - 1)
 
-                solution = {}
-                if args:
-                    max_workers = min(len(args), (os.cpu_count() or 1))
-                    ExecutorClass = concurrent.futures.ThreadPoolExecutor if use_threads else concurrent.futures.ProcessPoolExecutor
-                    with ExecutorClass(max_workers=max_workers) as ex:
-                        for rid, path in ex.map(_compute_agent_path, args):
-                            if path:
-                                solution[rid] = path
-                            else:
-                                print(f"Warning: no A* path found for agent {rid}")
-                                solution[rid] = None
+            previous_active, previous_goals = state_check(robots)  # update to the post-replan state
+            events = {k: 0 for k in events}  # reset counters we just consumed
 
-                # Assign computed paths back to robot objects
-                id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
-                for robot_id, path in solution.items():
-                    if path is None:
-                        continue
-                    if robot_id in id_to_index:
-                        r = robots[id_to_index[robot_id]]
-                        r.current_path = path
-                        r.remaining_distance = max(0, len(path) - 1)
-
-                previous_active, previous_goals = state_check(robots)  # update to the post-replan state
-                events = {k: 0 for k in events}  # reset counters we just consumed
-        # else:
-        #     print("No state change, skip CBS...")
-            
-            # print(f"ALL ROBOTS: {len(robots)}")
-            # print(f"ALL TASKS: {len(tasks)}")
-            # print(f"LIST OF ALL ROBOTS: {[rob.robot_id for rob in robots]}")
-            # print(f"LIST OF ALL TASKS: {[tas.task_id for tas in tasks]}")
-            # print(f"DEBUG STATEMENT 18")
-
-    # print(f"DEBUG STATEMENT 19")
     overall_success_rate = total_success / total_tasks
-    print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, total reassignments: {total_reassignments}")
+    print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, \ntotal reassignments: {total_reassignments}, total tasks: {total_tasks}, Total robots: {len(robots)}")
     return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments, min(total_time_steps, max_time_steps))
-#     for robot in robots:
-#         print(f"Robot {robot.robot_id} attempted {robot.tasks_attempted} tasks and successfully completed {robot.tasks_successful} of them.")
+
 
 def benchmark_simulation(
         output: tuple[list[tuple[int, int]],list[int],list[int]], 
@@ -516,20 +395,20 @@ def benchmark_simulation(
         robots_to_remove: int = 1,
         robot_generation_strict: bool = True,
         task_generation_strict: bool = True):
-    start_time = time.time()
+    start_time = time.perf_counter_ns()
     output_tuple = main_simulation(
         output, robots, tasks, num_candidates, voting_method, 
         grid, map_dict, suitability_method, suitability_matrix, 
         max_time_steps, add_tasks, add_robots, remove_robots, 
         tasks_to_add, robots_to_add, robots_to_remove,
         robot_generation_strict, task_generation_strict)
-    end_time = time.time()
+    end_time = time.perf_counter_ns()
     execution_time = end_time - start_time
 
     cpu_usage = psutil.cpu_percent()
     memory_usage = psutil.virtual_memory().used
 
-    print(f"Simulation completed in {execution_time:.2f} seconds.")
+    print(f"Simulation completed in {execution_time:.5f} seconds.")
     print(f"CPU Usage: {cpu_usage}%")
     print(f"Memory Usage: {memory_usage / (1024 * 1024)} MB")
 
@@ -619,11 +498,11 @@ if __name__ == "__main__":
             # r"lak307d.map",
             # r"ost002d.map",
         ]
-        max_time_steps = 250
-        # [10, 20, 30, 40, 50] sizes to make things faster to run for testing
-        robot_sizes = [10, 20, 30, 40, 50]
-        task_sizes = [10, 20, 30, 40, 50]
-        # candidate_sizes = [5, 10, 15]
+        max_time_steps = 500
+        robot_sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        task_sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        # robot_sizes = [10]
+        # task_sizes = [10]
         num_repetitions = 1
         add_tasks = False
         add_robots = False
@@ -658,13 +537,6 @@ if __name__ == "__main__":
                     'total_reassignments', 'Total Time Steps', 'Execution Time', 'CPU Usage', 'Memory Usage'])
                 for num_robots in robot_sizes:
                     print(f"\n\n\nSTARTING SIMULATION FOR {num_robots} ROBOTS")
-                    # task_sizes = [
-                    #     # int(num_robots * 0.5),
-                    #     int(num_robots * 0.75),
-                    #     num_robots,
-                    #     int(num_robots * 1.25),
-                    #     # int(num_robots * 1.5)
-                    # ]
                     for num_tasks in task_sizes:
                         print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                         # use partial candidate sizes for faster testing and also to say voting doesnt need to use whole suitability matrix
@@ -680,13 +552,18 @@ if __name__ == "__main__":
                                     print(f"\n\n\nSTARTING SIMULATION REPETITION {rep+1}/{num_repetitions}")
                                     voting_outputs = []
                                     assignment_infos = []
-                                    robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
-                                    tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
+                                    writer.writerow([f"--- Repetition {rep+1} ---"])
+                                    if robot_generation_strict:
+                                        robots = [G.generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
+                                        writer.writerow([f"Robot Profiles: {[r.strict_profile_name for r in robots]}"])
+                                    else:
+                                        robots = [G.generate_random_robot_profile(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
+                                    if task_generation_strict:
+                                        tasks = [G.generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
+                                        writer.writerow([f"Task Descriptions: {[t.strict_profile_name for t in tasks]}"])
+                                    else:
+                                        tasks = [G.generate_random_task_description(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
                                     suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
-                                    # while suitability_all_zero(suitability_matrix): #change this to just random assignment when there is all zeros
-                                    #     robots = [generate_random_robot_profile_strict(f"R{idx+1}", grid, set()) for idx in range(num_robots)]
-                                    #     tasks = [generate_random_task_description_strict(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
-                                    #     suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
                                     if suitability_all_zero(suitability_matrix):
                                         for method_idx in range(len(voting_methods)):
                                             print("All suitability scores are zero, randomly assigning tasks to robots.")

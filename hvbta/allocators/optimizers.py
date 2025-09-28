@@ -273,7 +273,7 @@ def assign_tasks_with_method_randomly(
 
     filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
 
-    print(f"Best assignment in voting: {filtered_best_assignments}")
+    print(f"Best assignment in optimization: {filtered_best_assignments}")
     
     return filtered_best_assignments, total_score, allocation_time
 
