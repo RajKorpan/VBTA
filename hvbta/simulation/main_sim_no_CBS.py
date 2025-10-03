@@ -483,12 +483,11 @@ if __name__ == "__main__":
             r"lak307d.map", # 84  x 84
             r"ost002d.map", # 145 x 181
         ]
-        map_paths = [
-            random.choice(small_maps, 3), 
-            random.choice(medium_maps, 3), 
-            random.choice(large_maps, 3)
-            ]
-        map_paths = [item for sublist in map_paths for item in sublist] # flatten the list of lists
+        map_paths = (
+        random.sample(small_maps, 3) +
+        random.sample(medium_maps, 3) +
+        random.sample(large_maps, 3)
+        )
         
         max_time_steps = 500
         robot_sizes = [5, 10, 20, 30, 40, 50, 100]
