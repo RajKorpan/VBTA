@@ -428,14 +428,6 @@ if __name__ == "__main__":
             V.rank_assignments_condorcet_method, 
             V.rank_assignments_range
             ]
-        # voting_names = [
-        #     "rank_assignments_borda", 
-        #     "rank_assignments_approval", 
-        #     "rank_assignments_majority_judgment", 
-        #     "rank_assignments_cumulative_voting", 
-        #     "rank_assignments_condorcet_method", 
-        #     "rank_assignments_range"
-        #     ]
         voting_names = [func_name(f) for f in voting_methods]
         allocation_methods = [
             O.cbba_task_allocation, 
@@ -443,89 +435,72 @@ if __name__ == "__main__":
             O.ilp_task_allocation, 
             O.jv_task_allocation
             ]
-        # allocation_names = [
-        #     "cbba_task_allocation", 
-        #     "ssia_task_allocation", 
-        #     "ilp_task_allocation", 
-        #     "jv_task_allocation"
-        #     ]
         allocation_names = [func_name(f) for f in allocation_methods]
-        # all_methods = [
-        #     V.rank_assignments_borda,
-        #     V.rank_assignments_approval,
-        #     V.rank_assignments_majority_judgment,
-        #     V.rank_assignments_cumulative_voting,
-        #     V.rank_assignments_condorcet_method,
-        #     V.rank_assignments_range,
-        #     O.cbba_task_allocation,
-        #     O.ssia_task_allocation,
-        #     O.ilp_task_allocation,
-        #     O.jv_task_allocation
-        #     ]
         all_methods = voting_methods + allocation_methods
         suitability_methods = [
             S.evaluate_suitability_new, 
             S.evaluate_suitability_loose, 
             S.evaluate_suitability_strict
             ]
-        # NOTE : choose 5 maps that vary in size and complexity for testing
-        map_paths = [
-            r"arena.map",
-            r"den001d.map",
-            # r"den009d.map",
-            # r"den020d.map",
-            # r"den101d.map",
-            # r"den201d.map",
-            # r"den202d.map",
-            # r"den203d.map",
-            # r"den204d.map",
-            # r"den206d.map",
-            # r"den207d.map",
-            # r"den308d.map",
-            # r"den312d.map",
-            # r"den403d.map",
-            # r"den404d.map",
-            # r"den405d.map",
-            # r"den407d.map",
-            # r"den408d.map",
-            # r"den900d.map",
-            # r"den901d.map",
-            # r"den998d.map",
-            # r"hrt001d.map",
-            # r"hrt002d.map",
-            # r"isound1.map",
-            # r"lak101d.map",
-            # r"lak102d.map",
-            # r"lak103d.map",
-            # r"lak104d.map",
-            # r"lak105d.map",
-            # r"lak106d.map",
-            # r"lak107d.map",
-            # r"lak108d.map",
-            # r"lak203d.map",
-            # r"lak307d.map",
-            # r"ost002d.map",
+        small_maps = [
+            r"den201d.map", # 37  x 37
+            r"den202d.map", # 40  x 39
+            r"den404d.map", # 34  x 28
+            r"lak101d.map", # 31  x 30
+            r"lak102d.map", # 30  x 38
+            r"lak105d.map", # 25  x 31
+            r"lak107d.map", # 26  x 36
+            r"lak108d.map", # 26  x 27
         ]
-
+        medium_maps = [
+            r"arena.map",   # 49  x 49
+            r"den009d.map", # 34  x 50
+            r"den101d.map", # 41  x 73
+            r"den204d.map", # 66  x 66
+            r"den207d.map", # 50  x 38
+            r"den403d.map", # 49  x 74
+            r"den405d.map", # 42  x 74
+            r"den407d.map", # 57  x 33
+            r"den408d.map", # 50  x 34
+            r"hrt002d.map", # 50  x 49
+            r"isound1.map", # 63  x 55
+            r"lak103d.map", # 49  x 49
+            r"lak104d.map", # 41  x 41
+        ]
+        large_maps = [
+            r"den001d.map", # 80  x 211
+            r"den020d.map", # 118 x 89
+            r"den203d.map", # 77  x 93
+            r"den206d.map", # 190 x 50
+            r"den308d.map", # 88  x 100
+            r"den312d.map", # 81  x 65
+            r"den900d.map", # 128 x 128
+            r"den901d.map", # 128 x 129
+            r"den998d.map", # 86  x 62
+            r"hrt001d.map", # 112 x 104
+            r"lak106d.map", # 113 x 97
+            r"lak203d.map", # 146 x 112
+            r"lak307d.map", # 84  x 84
+            r"ost002d.map", # 145 x 181
+        ]
+        map_paths = [
+            random.choice(small_maps, 3), 
+            random.choice(medium_maps, 3), 
+            random.choice(large_maps, 3)
+            ]
+        map_paths = [item for sublist in map_paths for item in sublist] # flatten the list of lists
+        
         max_time_steps = 500
-        # robot_sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        # task_sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        robot_sizes = [10, 20, 30]
-        task_sizes = [10, 20, 30]
+        robot_sizes = [5, 10, 20, 30, 40, 50, 100]
+        task_sizes = [5, 10, 20, 30, 40, 50, 100]
         Run_ID = 1
-        num_repetitions = 1
+        num_repetitions = 10
         add_tasks = False
         add_robots = False
         remove_robots = False
         robot_generation_strict = True
         task_generation_strict = True
         map_dir = r"MAPF_benchmark_maps"
-
-        # full_paths = []
-        # for m in map_paths:
-        #     full_paths.append(os.path.join(map_dir, m))
-        # map_file = r"test_small_open.map"
-        # dir_path = r"hvbta\io\results"
 
         dir_path = os.path.join('hvbta', 'io', 'results')
         os.makedirs(dir_path, exist_ok=True)
