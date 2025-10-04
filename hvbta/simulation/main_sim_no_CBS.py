@@ -493,7 +493,7 @@ if __name__ == "__main__":
         robot_sizes = [5, 10, 20, 30, 40, 50, 100]
         task_sizes = [5, 10, 20, 30, 40, 50, 100]
         Run_ID = 1
-        num_repetitions = 10
+        num_repetitions = 5
         add_tasks = False
         add_robots = False
         remove_robots = False
@@ -545,8 +545,10 @@ if __name__ == "__main__":
                     for num_tasks in task_sizes:
                         print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                         candidate_sizes = [
-                            max(1, int((num_robots * num_tasks) * 0.5)),
-                            max(1, int((num_robots * num_tasks) * 0.75)),
+                            # max(1, int((num_robots * num_tasks) * 0.5)),
+                            # max(1, int((num_robots * num_tasks) * 0.75)),
+                            max(1, int(num_robots * 0.75)),
+                            max(1, int(num_robots * 1.0)),
                         ]
                         for nc in candidate_sizes:
                             print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
