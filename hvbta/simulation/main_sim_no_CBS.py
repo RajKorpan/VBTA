@@ -313,18 +313,25 @@ def main_simulation(
         # Reassign unassigned robots to unassigned tasks
         if should_replan and start_positions and goal_positions:
 
+            pairwise_scorer = sm
+            if getattr(sm, "_is_llm_batch", False):
+                suitability_matrix = sm(robots, tasks)
+                pairwise_scorer = S.make_pairwise_from_batch(lambda *_: suitability_matrix, robots, tasks)
+            else:
+                pairwise_scorer = sm
+
             if voting_method in voting_methods:
                 print(f"REASSIGNING WITH VOTING METHOD: {voting_method_name}")
                 total_reassignments += 1
                 _, unassigned_robots, unassigned_tasks, reassign_score, reassign_length = V.reassign_robots_to_tasks(
-                    robots, tasks, num_candidates, voting_method, suitability_method,
+                    robots, tasks, num_candidates, voting_method, pairwise_scorer,
                     unassigned_robots, unassigned_tasks, start_positions, goal_positions
                 )
             elif voting_method in optimization_methods:
                 print(f"REASSIGNING WITH OPTIMIZATION METHOD: {optimization_method_name}")
                 total_reassignments += 1
                 _, unassigned_robots, unassigned_tasks, reassign_score, reassign_length = O.reassign_robots_to_tasks_with_method(
-                    robots, tasks, num_candidates, voting_method, suitability_method,
+                    robots, tasks, num_candidates, voting_method, pairwise_scorer,
                     unassigned_robots, unassigned_tasks, voting_method, start_positions, goal_positions
                 )
             total_reassignment_time  += reassign_length
@@ -440,7 +447,8 @@ if __name__ == "__main__":
         suitability_methods = [
             S.evaluate_suitability_new, 
             S.evaluate_suitability_loose, 
-            S.evaluate_suitability_strict
+            S.evaluate_suitability_strict,
+            S.evaluate_suitability_from_names_with_llm
             ]
         small_maps = [
             r"den201d.map", # 37  x 37
@@ -483,17 +491,32 @@ if __name__ == "__main__":
             r"lak307d.map", # 84  x 84
             r"ost002d.map", # 145 x 181
         ]
-        map_paths = (
-        random.sample(small_maps, 3) +
-        random.sample(medium_maps, 3) +
-        random.sample(large_maps, 3)
-        )
+        # map_paths = (
+        # random.sample(small_maps, 3) +
+        # random.sample(medium_maps, 3) +
+        # random.sample(large_maps, 3)
+        # )
+
+        # randomly chosen maps from strict run
+        map_paths = [
+            r"den020d.map", # 118 x 89
+            r"den404d.map", # 34  x 28
+            r"den405d.map", # 42  x 74
+            r"den408d.map", # 50  x 34
+            r"isound1.map", # 63  x 55
+            r"lak102d.map", # 30  x 38
+            r"lak108d.map", # 26  x 27
+            r"lak203d.map", # 146 x 112
+            r"ost002d.map", # 145 x 181
+        ]
         
         max_time_steps = 500
-        robot_sizes = [5, 10, 20, 30, 40, 50, 100]
-        task_sizes = [5, 10, 20, 30, 40, 50, 100]
+        # robot_sizes = [5, 10, 20, 30, 40, 50, 100]
+        # task_sizes = [5, 10, 20, 30, 40, 50, 100]
+        robot_sizes = [10]
+        task_sizes = [10]
         Run_ID = 1
-        num_repetitions = 5
+        num_repetitions = 1
         add_tasks = False
         add_robots = False
         remove_robots = False
@@ -515,8 +538,8 @@ if __name__ == "__main__":
                 'obstacles': obstacles
             }
 
-            results_path  = os.path.join(dir_path, f"simulation_results_{os.path.basename(map_file)}.csv")
-            profiles_path = os.path.join(dir_path, f"profiles_{os.path.basename(map_file)}.csv")
+            results_path  = os.path.join(dir_path, f"LLM_simulation_results_{os.path.basename(map_file)}.csv")
+            profiles_path = os.path.join(dir_path, f"LLM_profiles_{os.path.basename(map_file)}.csv")
 
             with open(results_path, mode="w", newline='') as file, \
                 open(profiles_path, mode="w", newline='') as profile_file:
@@ -547,7 +570,7 @@ if __name__ == "__main__":
                         candidate_sizes = [
                             # max(1, int((num_robots * num_tasks) * 0.5)),
                             # max(1, int((num_robots * num_tasks) * 0.75)),
-                            max(1, int(num_robots * 0.75)),
+                            # max(1, int(num_robots * 0.75)),
                             max(1, int(num_robots * 1.0)),
                         ]
                         for nc in candidate_sizes:
@@ -572,7 +595,14 @@ if __name__ == "__main__":
                                         task_profiles = [t.strict_profile_name for t in tasks]
                                     else:
                                         tasks = [G.generate_random_task_description(f"T{idx+1}", grid, set(), []) for idx in range(num_tasks)]
-                                    suitability_matrix = S.calculate_suitability_matrix(robots, tasks, sm)
+
+                                    pairwise_scorer = sm
+                                    if getattr(sm, "_is_llm_batch", False):
+                                        suitability_matrix = sm(robots, tasks)
+                                        pairwise_scorer = S.make_pairwise_from_batch(lambda *_: suitability_matrix, robots, tasks)
+                                    else:
+                                        pairwise_scorer = sm
+                                        suitability_matrix = S.calculate_suitability_matrix(robots, tasks, pairwise_scorer)
 
                                     # if both generations are strict we log them to be able to compare later, if one is not theres no point
                                     if robot_generation_strict and task_generation_strict:

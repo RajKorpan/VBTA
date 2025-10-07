@@ -54,7 +54,7 @@ def generate_random_robot_profile(robot_id: str, grid: List[List[int]], occupied
     mobility_type = random.choice(C.MOBILITY_TYPES)
     payload_capacity = round(random.uniform(20.0, 50.0), 1)
     reach = 0.0 if mobility_type in {"aerial"} else round(random.uniform(3.0, 10.0), 1)
-    battery_life = round(random.uniform(grid.shape[0], grid.shape[0]*3), 1) # takes into account the size of the map
+    battery_life = round(random.uniform(max(len(grid), len(grid[0])), max(len(grid), len(grid[0]))*3), 1) # takes into account the size of the map
     size = (round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2))  # (length, width, height)
     environmental_resistance = _sample(C.ENV_RESISTANCES, 1)
     sensors = _sample(C.SENSORS, 1)  # should not be empty

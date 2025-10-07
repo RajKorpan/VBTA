@@ -1,7 +1,17 @@
+from msilib import text
+import os, json, re, ast
+from dotenv import load_dotenv
 import numpy as np
-from typing import List, Tuple, Callable
+from numpy.typing import NDArray
+from typing import List, Tuple, Callable, Union
 from openai import OpenAI
+from prompt_toolkit import prompt
 from .models import CapabilityProfile, TaskDescription
+from inspect import signature, Parameter
+from enum import Enum
+from dataclasses import is_dataclass, asdict
+
+load_dotenv()
 
 ScoreFn = Callable[[CapabilityProfile, TaskDescription], float]
 
@@ -168,15 +178,42 @@ def evaluate_suitability_new(robot: CapabilityProfile, task: TaskDescription) ->
         score += weights["reach"]
 
     # Manipulators (tools_needed[1] is manipulators list)
-    total_weight += weights["manipulators"]
+    # Check if there are any tool requirements for the task
     if task.tools_needed:
-        if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-            task.tools_needed[1].remove("cable hoist")
-        matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-        tool_score = matched_tools / len(task.tools_needed[1])
-        if tool_score != 1:
-            return 0.0
-        score += weights["manipulators"] * tool_score
+        # A tool requirement exists, so add its weight to the total possible score
+        total_weight += weights["manipulators"]
+        
+        group_scores = []
+        # Iterate through each required tool group (the "AND" part)
+        for required_group in task.tools_needed:
+            # Skip any malformed or empty tool groups
+            if not required_group:
+                continue
+
+            # 1. First, check for basic suitability (the "OR" part)
+            #    Does the robot have at least one of the tools in this group?
+            if not any(tool in robot.manipulators for tool in required_group):
+                return 0.0  # If any AND group is not met, the robot is unsuitable.
+
+            # 2. If suitable, then calculate the scalar score for this group
+            #    This measures redundancy/completeness.
+            matched_count = sum(tool in robot.manipulators for tool in required_group)
+            group_score = matched_count / len(required_group)
+            group_scores.append(group_score)
+
+        # 3. If the loop completed, all groups were satisfied.
+        #    Average the scores of all groups to get the final tool_score.
+        if group_scores:
+            tool_score = sum(group_scores) / len(group_scores)
+            score += weights["manipulators"] * tool_score
+    # if task.tools_needed:
+    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    #         task.tools_needed[1].remove("cable hoist")
+        # matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+        # tool_score = matched_tools / len(task.tools_needed[1])
+        # if tool_score != 1:
+        #     return 0.0
+        # score += weights["manipulators"] * tool_score
 
     # Sensors (tools_needed[0] is sensors list)
     total_weight += weights["sensors"]
@@ -350,13 +387,36 @@ def evaluate_suitability_loose(robot: CapabilityProfile, task: TaskDescription) 
         score += weights["reach"]
 
     # Manipulators (tools_needed[1] is manipulators list)
-    total_weight += weights["manipulators"]
+    # Manipulators
     if task.tools_needed:
-        if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-            task.tools_needed[1].remove("cable hoist")
-        matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-        tool_score = matched_tools / len(task.tools_needed[1])
-        score += weights["manipulators"] * tool_score
+        total_weight += weights["manipulators"]
+        
+        group_scores = []
+        # Iterate through each required tool group (the "AND" part)
+        for required_group in task.tools_needed:
+            if not required_group:
+                continue
+
+            # 1. First, check if the robot has at least one tool for this group (the "OR" part)
+            if not any(tool in robot.manipulators for tool in required_group):
+                return 0.0  # If any AND group is not met, the robot is unsuitable.
+
+            # 2. If the group is met, calculate the scalar score for redundancy
+            matched_count = sum(tool in robot.manipulators for tool in required_group)
+            group_score = matched_count / len(required_group)
+            group_scores.append(group_score)
+
+        # 3. If the loop completed, average the scores to get the final tool_score
+        if group_scores:
+            tool_score = sum(group_scores) / len(group_scores)
+            score += weights["manipulators"] * tool_score
+    # total_weight += weights["manipulators"]
+    # if task.tools_needed:
+    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    #         task.tools_needed[1].remove("cable hoist")
+    #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+    #     tool_score = matched_tools / len(task.tools_needed[1])
+    #     score += weights["manipulators"] * tool_score
 
     # Sensors (tools_needed[0] is sensors list)
     total_weight += weights["sensors"]
@@ -530,15 +590,31 @@ def evaluate_suitability_strict(robot: CapabilityProfile, task: TaskDescription)
         score += weights["reach"]
 
     # Manipulators (tools_needed[1] is manipulators list)
-    total_weight += weights["manipulators"]
+    # Manipulators
     if task.tools_needed:
-        if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-            task.tools_needed[1].remove("cable hoist")
-        matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-        tool_score = matched_tools / len(task.tools_needed[1])
-        if tool_score != 1:
-            return 0.0
-        score += weights["manipulators"] * tool_score
+        total_weight += weights["manipulators"]
+        
+        # Iterate through each required tool group (the "AND" part)
+        for required_group in task.tools_needed:
+            # Check if the robot has at least one tool from the current group (the "OR" part)
+            has_matching_tool = any(tool in robot.manipulators for tool in required_group)
+            
+            # If a required group is not satisfied, the robot is completely unsuitable.
+            if not has_matching_tool:
+                return 0.0 # Exit immediately with a score of 0
+
+        # If the loop completes, it means all tool groups were satisfied.
+        # Award the full score for this category.
+        score += weights["manipulators"]
+    # total_weight += weights["manipulators"]
+    # if task.tools_needed:
+    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    #         task.tools_needed[1].remove("cable hoist")
+    #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+    #     tool_score = matched_tools / len(task.tools_needed[1])
+    #     if tool_score != 1:
+    #         return 0.0
+    #     score += weights["manipulators"] * tool_score
 
     # Sensors (tools_needed[0] is sensors list)
     total_weight += weights["sensors"]
@@ -1013,73 +1089,561 @@ def evaluate_suitability_priority(robot: CapabilityProfile, task: TaskDescriptio
 #     print(score)
     return score
 
-def evaluate_suitability_with_llm(robots: List[CapabilityProfile], tasks: list[TaskDescription]) -> str:
-    """
-    Uses a large language model (LLM) to evaluate the suitability of a robot for a given task.
+# def evaluate_suitability_with_llm(robots: List[CapabilityProfile], tasks: list[TaskDescription]) -> str:
+#     """
+#     Uses a large language model (LLM) to evaluate the suitability of a robot for a given task.
 
 
-    Parameters:
-        robot: The CapabilityProfile of the robot.
-        task: The TaskDescription of the task.
+#     Parameters:
+#         robot: The CapabilityProfile of the robot.
+#         task: The TaskDescription of the task.
 
 
-    Returns:
-        score: A float score (0 to 1) representing the suitability of the robot for the task.
-    """
-    prompt = f"""
-    You are evaluating the suitability of robots for tasks in a multi-robot system.
+#     Returns:
+#         score: A float score (0 to 1) representing the suitability of the robot for the task.
+#     """
+#     prompt = f"""
+#     You are evaluating the suitability of robots for tasks in a multi-robot system.
    
-    Robot Details:
-    {robots}
-    (Note: Maximum Speed in units/sec, Payload Capacity in kg, Reach and Sensor Range in meters, Battery Life in seconds, Size in (length, width, height) in meters.)
+#     Robot Details:
+#     {robots}
+#     (Note: Payload Capacity in kg, Reach and Sensor Range in meters, Battery Life in time steps, Processing Power arbitrary measure of computational capability from 1 to 10, Adaptability is a boolean basically acting as a bonus to the score, Size in (length, width, height) meters not pertinent to suitability)
 
-    Task Details:
-    {tasks}
-    (Note: tools_needed[0] is the required sensors list. Tools_needed[1] is the required manipulators list. Difficulty is on a 1-10 scale, Location is (x, y, z) coordinates, Duration is in seconds.)
+#     Task Details:
+#     {tasks}
+#     (Note: tools_needed[0] is the required sensors list. Tools_needed[1] is the required manipulators list. Difficulty is on a 1-10 scale pertaining to robot Processing Power, Location is (x, y, z) coordinates, Duration is in time steps.)
 
-    Based on the robot capabilities and the task requirements, *please rate the suitability of each robot-task pair on a scale of 0 to 1, where 0 means the robot is completely unsuitable and 1 means it is perfectly suited.*
-    When evaluating whether the robot has the CRITICAL requirements, ONLY check the following three fields:
+#     Based on the robot capabilities and the task requirements, *please rate the suitability of each robot-task pair on a scale of 0 to 1, where 0 means the robot is completely unsuitable and 1 means it is perfectly suited.*
+#     When evaluating whether the robot has the CRITICAL requirements, ONLY check the following three fields:
 
-    1. Manipulators (only compare against the tasks's tools_needed[1])
-    2. Navigation Constraints (assume aerial and hovering can circumvent ground conditions)
-    3. Payload Capacity
+#     1. Manipulators (only compare against the tasks's tools_needed[1])
+#     2. Navigation Constraints (assume aerial and hovering can circumvent ground conditions)
+#     3. Payload Capacity
 
-    Only the these three fields are critical (Manipulators, Navigation, Payload). Do not consider any other field, like Reach, as critical. The robot should only receive a score of 0 **if one or more of those THREE specific requirements are not satisfied**.
-    Once the critical requirements (Tools Needed, Navigation Constraints, and Payload Capacity) are satisfied, evaluate all OTHER attributes. All other capabilities and requirements should still influence the score between 0 and 1 (if the critical requirements are met).
-    When comparing multi-value attributes (such as Environmental Resistance, Sensors, Communication Protocols, Special Functions, or Safety Features), treat them as **matched** if the robot satisfies the **majority** of the required values. If it doesn't reach majority, but is still not 100% unmatched, give *partial credit*.  
+#     Only the these three fields are critical (Manipulators, Navigation, Payload). Do not consider any other field, like Reach, as critical. The robot should only receive a score of 0 **if one or more of those THREE specific requirements are not satisfied**.
+#     Once the critical requirements (Tools Needed, Navigation Constraints, and Payload Capacity) are satisfied, evaluate all OTHER attributes. All other capabilities and requirements should still influence the score between 0 and 1 (if the critical requirements are met).
+#     When comparing multi-value attributes (such as Environmental Resistance, Sensors, Communication Protocols, Special Functions, or Safety Features), treat them as **matched** if the robot satisfies the **majority** of the required values. If it doesn't reach majority, but is still not 100% unmatched, give *partial credit*.  
 
-    *Duration is how much time is required to finish a task, once the robot arrives at the task. Use it to calculate whether or not the robot has enough battery to both arrive at the site, and complete the task*
-    *Task priority level should be compared with robot's autonomy level. Task's difficulty should be compared with robot's processing power. If robot is adaptable, add to the score, automatically. A robot's special functions should be compared to the overall requirements of the task*.   
+#     *Duration is how many time steps are required to finish a task, once the robot arrives at the task. Use it to calculate whether or not the robot has enough battery to both arrive at the site, and complete the task*
+#     *Task priority level should be compared with robot's autonomy level. Task's difficulty should be compared with robot's processing power. If robot is adaptable, add to the score, automatically. A robot's special functions should be compared to the overall requirements of the task*.   
 
-    Output Format:
-    Return a 2D suitability matrix:
-        Rows = robots.
-        Columns = tasks.
-        Each entry = suitability score for that robot-task pair (float between 0 and 1).    
-    Make sure the output section only has the title "OUTPUT" and the suitability matrix, no additional words in this section
+#     Output Format:
+#     Return a 2D suitability matrix:
+#         Rows = robots.
+#         Columns = tasks.
+#         Each entry = suitability score for that robot-task pair (float between 0 and 1).    
+#     Make sure the output section only has the title "OUTPUT" and the suitability matrix, no additional words in this section
 
-    Example Output (for 3 robots x 3 tasks):
-    [
-        [0.9, 0.7, 0.0],
-        [0.4, 0.8, 0.6],
-        [0.0, 0.3, 1.0]
-    ]
-"""
+#     Example Output (for 3 robots x 3 tasks):
+#     [
+#         [0.9, 0.7, 0.0],
+#         [0.4, 0.8, 0.6],
+#         [0.0, 0.3, 1.0]
+#     ]
+# """
 
     
-    #Provide ONLY a single number between 0 and 1. Do not include any words, punctuation, or explanations.
-    score = 0.0
-    try:
-        client = OpenAI()
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt
-        )
-        score = response.output_text
-    except Exception as e:
-        print(f"Error: {response}")
+#     #Provide ONLY a single number between 0 and 1. Do not include any words, punctuation, or explanations.
+#     score = 0.0
+#     try:
+#         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+#         response = client.responses.create(
+#             model="gpt-4.1-mini",
+#             input=prompt
+#         )
+#         score = response.output_text
+#     except Exception as e:
+#         print(f"Error: {response}")
+#
+#    return score
 
-    return score
+# --- Minimal serializers so the prompt stays short & cheap ---
+def _robot_to_dict(r):
+    return {
+        "id": r.robot_id,
+        "payload_capacity": r.payload_capacity,
+        "reach": r.reach,
+        "sensor_range": r.sensor_range,
+        "battery_life": r.battery_life,
+        "processing_power": r.processing_power,
+        "adaptability": bool(getattr(r, "adaptability", False)),
+        "autonomy_level": getattr(r, "autonomy_level", None),
+        "manipulators": getattr(r, "manipulators", []),
+        "navigation": getattr(r, "navigation_constraints", []),
+        "sensors": getattr(r, "sensors", []),
+        "comm": getattr(r, "communication_protocols", []),
+        "safety": getattr(r, "safety_features", []),
+        "special": getattr(r, "special_functions", []),
+        "location": tuple(getattr(r, "location", (0,0))),
+        # add only what you truly need
+    }
+
+def _task_to_dict(t):
+    return {
+        "id": t.task_id,
+        "tools_needed": getattr(t, "tools_needed", [[],[]]),  # [sensors, manipulators]
+        "navigation_constraints": getattr(t, "navigation_constraints", []),
+        "payload_required": getattr(t, "payload_required", 0.0),
+        "reach_required": getattr(t, "reach_required", 0.0),
+        "sensors_required": getattr(t, "sensors_required", []),
+        "communications_required": getattr(t, "communications_required", []),
+        "safety_protocols": getattr(t, "safety_protocols", []),
+        "priority": getattr(t, "priority_level", None),
+        "difficulty": getattr(t, "difficulty", None),
+        "location": tuple(getattr(t, "location", (0,0))),
+        "duration": float(getattr(t, "time_to_complete", 0.0)),
+        "reset_progress": bool(getattr(t, "reset_progress", False)),
+        # add only what you truly need
+    }
+
+def _json_default(o):
+    # Enums -> names (or use .value if you prefer)
+    if isinstance(o, Enum):
+        return o.name
+    # numpy scalars -> Python scalars
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return float(o)
+    if isinstance(o, (np.bool_,)):
+        return bool(o)
+    # numpy arrays -> lists
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    # sets/tuples -> lists
+    if isinstance(o, (set, tuple)):
+        return list(o)
+    # dataclasses -> dict
+    if is_dataclass(o):
+        return asdict(o)
+    # fallback: string
+    return str(o)
+
+def _to_jsonable(x):
+    """Recursively convert to JSON-safe Python objects."""
+    if is_dataclass(x):
+        x = asdict(x)
+    if isinstance(x, dict):
+        return {str(k): _to_jsonable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple, set)):
+        return [_to_jsonable(v) for v in x]
+    if isinstance(x, Enum):
+        return x.name
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, (np.integer,)):
+        return int(x)
+    if isinstance(x, (np.floating,)):
+        return float(x)
+    if isinstance(x, (np.bool_,)):
+        return bool(x)
+    return x
+
+def _extract_output_matrix_text(raw: str) -> str | None:
+    """
+    Find the first bracketed matrix *after* the token 'OUTPUT'.
+    Returns the substring like "[ [...], [...], ... ]" or None.
+    """
+    if not isinstance(raw, str):
+        return None
+
+    # Find OUTPUT token (case-insensitive, as a whole word)
+    m = re.search(r'\bOUTPUT\b', raw, flags=re.IGNORECASE)
+    start = m.end() if m else 0
+
+    # Find the first '[' after OUTPUT
+    first_lb = raw.find('[', start)
+    if first_lb == -1:
+        return None
+
+    # Balanced bracket scan to find the matching closing ']'
+    depth = 0
+    for i in range(first_lb, len(raw)):
+        ch = raw[i]
+        if ch == '[':
+            depth += 1
+        elif ch == ']':
+            depth -= 1
+            if depth == 0:
+                return raw[first_lb:i+1]
+
+    return None
+
+def _clean_for_json(s: str) -> str:
+    """
+    Make the matrix string JSON-friendly:
+    - replace single quotes with double
+    - drop trailing commas before ] or }
+    - replace NaN/Infinity with 0
+    - strip stray semicolons
+    """
+    s = s.strip()
+    # If it looks like Python-lists with single quotes, normalize
+    if "'" in s and '"' not in s:
+        s = s.replace("'", '"')
+
+    # Remove trailing commas ", ]" -> "]"
+    s = re.sub(r',\s*]', ']', s)
+    s = re.sub(r',\s*}', '}', s)
+
+    # Replace non-JSON tokens
+    s = re.sub(r'\bNaN\b', '0', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bInfinity\b', '0', s, flags=re.IGNORECASE)
+    s = s.replace(';', ',')
+
+    return s
+
+def _parse_output_matrix(raw_text: str, nR: int, nT: int) -> np.ndarray | None:
+    """
+    Parse the OUTPUT matrix into an (nR, nT) float array.
+    Returns None if impossible to parse.
+    """
+    block = _extract_output_matrix_text(raw_text)
+    if not block:
+        return None
+
+    cleaned = _clean_for_json(block)
+
+    data = None
+    # Try JSON first
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        # Fall back to Python literal eval
+        try:
+            data = ast.literal_eval(cleaned)
+        except Exception:
+            return None
+
+    try:
+        arr = np.array(data, dtype=float)
+    except Exception:
+        return None
+
+    # Fix common shape slips
+    if arr.ndim == 1:
+        # If one row was returned but we expect one robot, accept as (1, nT)
+        if nR == 1 and arr.size == nT:
+            arr = arr.reshape(1, nT)
+        # If one column returned but expect one task, accept as (nR, 1)
+        elif nT == 1 and arr.size == nR:
+            arr = arr.reshape(nR, 1)
+
+    # If shape is close, pad/truncate (optional; or you can reject)
+    if arr.ndim == 2:
+        r, c = arr.shape
+        # pad rows
+        if r < nR:
+            pad = np.zeros((nR - r, min(c, nT)), dtype=float)
+            arr = np.vstack([arr[:, :min(c, nT)], pad])
+            r, c = arr.shape
+        # pad cols
+        if c < nT:
+            pad = np.zeros((min(r, nR), nT - c), dtype=float)
+            arr = np.hstack([arr[:min(r, nR), :], pad])
+
+        # finally enforce exact size
+        arr = arr[:nR, :nT]
+    else:
+        return None
+
+    # clip to [0,1]
+    arr = np.clip(arr, 0.0, 1.0)
+    if arr.shape != (nR, nT):
+        return None
+    return arr
+
+
+def build_name_only_prompt(robots_json: str, tasks_json: str) -> str:
+    return f"""
+You score robot–task suitability using ONLY each task's name and a short description (if provided).
+Infer typical requirements from the task name (and description), then score how suitable each robot is.
+Do not include code fences, explanations, or any text outside of the score matrix. Do not include comments.
+The matrix must be exactly N rows (robots) by M columns (tasks).
+
+INPUT (JSON)
+Robots:
+{robots_json}
+
+Tasks (only names + optional nl_description):
+{tasks_json}
+
+Scoring principles (follow closely)
+- No hard-fail zeros unless the robot is blatantly incapable for the *typical* demands implied by the task name.
+- Infer likely needs from the name/description, e.g.:
+  · "item elevation" → hoisting/cable hoist, long reach, stable placement.
+  · "excavate" → hydraulic bucket, traction (tracked), high payload, rugged sensors.
+  · "lay bricks" → dispenser/gripper, precise alignment, moderate reach, stable placement.
+  · "scaffold" → work near frames at height, drill/gripper, precise alignment, narrow access.
+  · "delivery" → mobility/endurance, small payload capacity, navigation through corridors.
+  · "utilities" → gripper operation of valves/switches, precise manipulation; or bucket variant for bulk.
+  · "debris" → gripper variant (pick-and-place) vs bucket variant (bulk scooping).
+- Consider: manipulators, mobility type, payload capacity, reach, sensor suite, comms/safety, autonomy level, processing power, battery/endurance.
+- Use soft weights; if a capability is somewhat relevant but not mandatory, give partial credit rather than 0.
+- Calibrate to avoid trivial 0.0/1.0: clamp to [0.05, 0.99] unless obviously perfect (1.0) or clearly mismatched (~0.0).
+
+Output format (STRICT)
+Return ONLY:
+OUTPUT
+[
+  [r1_t1, r1_t2, ..., r1_tM],
+  [r2_t1, r2_t2, ..., r2_tM],
+  ...
+]
+with floats in [0,1]. No extra text after the matrix.
+"""
+
+
+# def evaluate_suitability_with_llm_batch(robots: List, tasks: List) -> np.ndarray:
+#     """
+#     Call an LLM once to score ALL robot×task pairs.
+#     Returns a float matrix of shape (len(robots), len(tasks)).
+#     """
+#     R = [_to_jsonable(_robot_to_dict(r)) for r in robots]
+#     T = [_to_jsonable(_task_to_dict(t))  for t in tasks]
+
+#     text_prompt = f"""
+#     You are scoring suitability of robots for tasks in a multi-robot system.
+#     Return a 2D matrix of floats in [0,1], with rows = robots and columns = tasks.
+#     Do not print explanations outside the OUTPUT section.
+
+#     Data
+#     Robots (JSON):
+#     {json.dumps(R, default=_json_default)}
+
+#     Tasks (JSON):
+#     {json.dumps(T, default=_json_default)}
+
+#     - Units: payload (kg), reach & sensor_range (meters), battery_life (time steps).
+#     - tools_needed[0] = required sensors; tools_needed[1] = required manipulators.
+#     - difficulty on 1–10 scale; duration in time steps.
+#     - location = (x,y); max_speed in grid cells / step.
+#     - Robot fields like autonomy_level, environmental_resistance, safety_features, communication_protocols, special_functions may be lists or enums.
+
+#     Scoring rules (follow exactly)
+#     Hard-fail (score = 0.0) only if any of the 3 CRITICAL constraints fail:
+#     1. Manipulators: task.tools_needed[1] must be ⊆ robot.manipulators (allow partial credit logic only if both are non-empty and ≥50% overlap; otherwise hard-fail).
+#     2. Navigation constraints: if task.navigation_constraints prohibit robot’s mobility type and robot is not aerial/hovering, then hard-fail. (If aerial/hovering, ignore ground constraints.)
+#     3. Payload capacity: robot.payload_capacity < required → hard-fail.
+#     If no hard-fail, compute a continuous score as a weighted sum below, each subscore in [0,1], then clamp the final result to [0.05, 0.99] unless it is exactly perfect (1.0). This avoids excessive 0.0/1.0.
+
+#     Component weights (sum = 1.00)
+#     - Payload adequacy (0.12): min(1, robot.payload_capacity / required_payload). If no exact requirement given, use 1.
+#     - Manipulator coverage (0.10): |intersection| / |required_manipulators| (1 if none required).
+#     - Sensor coverage (0.08): |intersection| / |required_sensors| (1 if none required).
+#     - Communication match (0.05): fraction of required protocols present (1 if none required).
+#     - Safety compliance (0.06): fraction of required safety features present (1 if none required).
+#     - Environmental fit (0.06): fraction of required environmental conditions present (1 if none required).
+#     - Reach fit (0.06): if required_reach given: min(1, robot.reach / required_reach); else 1.
+#     - Autonomy vs priority (0.07):
+#         - urgent/high: fully autonomous=1.0; semi=0.7; teleop=0.5
+#         - medium: fully=1.0; semi=0.9; teleop=0.7
+#         - low: fully=1.0; semi=0.95; teleop=0.9
+#     - Processing vs difficulty (0.10): sigmoid: 1/(1+exp(-(robot.processing_power - difficulty))). Normalize difficulty roughly to 1–10.
+#     - Battery sufficiency (0.12):
+#         - travel_time = distance(robot.location, task.location)/max(0.1, robot.max_speed)
+#         - total_time = travel_time + task.duration
+#         - if robot.battery_life < total_time → 0.0; else = min(1, robot.battery_life/total_time) capped at 1.2 and then divided by 1.2.
+#     - Proximity/sensor awareness (0.06):
+#         - Let map_diag ≈ max_map_distance (or infer from max x,y).
+#         - proximity = 1 − min(1, distance/map_diag).
+#         - sensor_help = 1 if robot.sensor_range ≥ distance, else max(0, robot.sensor_range/distance).
+#         - subscore = 0.5proximity + 0.5sensor_help.
+#     - Special functions relevance (0.07): fraction of “suggested special functions” for task type that robot has (1 if none suggested).
+#     - Adaptability bonus (0.05): 1.0 if robot.adaptability true, else 0.7.
+#     - Navigation fit soft factor (0.10) (only if not hard-failed):
+#         - If constraints exist and robot not aerial/hovering: 0.7 if partially mitigated by sensors/safety (>=50% coverage of the required navigation-related items), else 0.4.
+#         - If aerial/hovering or no special constraints: 1.0.
+#     If any required list is empty or missing, treat that component as 1.0 (no penalty).
+#     For all set overlaps, compute as |intersection| / max(1, |required|).
+
+#     Final Score
+#     score = sum(weight_i * subscore_i)
+#     Clamp: if score in (0,1) and not exactly perfect, output min(0.99, max(0.05, score)).
+#     If hard-fail occurred earlier → 0.0.
+
+#     Output
+
+#     Return only:
+#     OUTPUT
+#     [
+#       [r1_t1, r1_t2, ..., r1_tM],
+#       [r2_t1, r2_t2, ..., r2_tM],
+#       ...
+#     ]
+#     - With N robots and M tasks.
+#     - Each rX_tY is a float (0–1) following the rules above.
+#     - No other text after OUTPUT.
+#     Example (format only):
+#     OUTPUT
+#     [
+#       [0.78, 0.41, 0.00],
+#       [0.62, 0.85, 0.57]
+#     ]
+#     """
+
+#     prompt = {
+#         "role": "user",
+#         "content": (
+#             text_prompt.strip()
+#             .replace("\n    ", "\n")  # outdent for readability
+#             .replace("\n\n", "\n")     # remove double newlines
+#         )
+#     }
+# #     messages = [
+# #     {
+# #         "role": "system",
+# #         "content": (
+# #             "You are an expert robotics evaluator in a multi-robot task allocation experiment. "
+# #             "You must objectively rate the suitability of each robot-task pair based on their attributes, "
+# #             "giving numerical scores from 0.0 to 1.0 that reflect nuanced alignment, not just binary checks."
+# #         ),
+# #     },
+# #     {
+# #         "role": "user",
+# #         "content": (
+# #             text_prompt.strip()
+# #             .replace("\n    ", "\n")
+# #             .replace("\n\n", "\n")
+# #         ),
+# #     },
+# # ]
+
+#     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+#     # You can use either the new Responses API or chat.completions.
+#     # Here's chat.completions for broad compatibility:
+#     resp = client.chat.completions.create(
+#         model="gpt-4.1-nano",   # pick your model
+#         messages=[prompt],
+#         temperature=0.0,
+#     )
+
+#     text = resp.choices[0].message.content.strip()
+
+#     # Expect pure JSON; but be defensive in case the model adds noise
+#     # Try to extract the first top-level JSON array
+#     match = re.search(r"\[.*\]", text, flags=re.S)
+#     if not match:
+#         # fallback: return zeros
+#         return np.zeros((len(robots), len(tasks)), dtype=float)
+
+#     try:
+#         matrix = json.loads(match.group(0))
+#         arr = np.array(matrix, dtype=float)
+#     except Exception:
+#         return np.zeros((len(robots), len(tasks)), dtype=float)
+
+#     # shape check
+#     expected = (len(robots), len(tasks))
+#     if arr.shape != expected:
+#         # try to coerce row/col if user gave transposed; if still wrong, fallback
+#         if arr.shape == expected[::-1]:
+#             arr = arr.T
+#         else:
+#             return np.zeros(expected, dtype=float)
+
+#     # clamp to [0,1] just in case
+#     arr = np.clip(arr, 0.0, 1.0)
+#     return arr
+
+# import numpy as np
+
+
+def _robot_min_view(r):
+    return dict(
+        robot_id=getattr(r, "robot_id", None),
+        mobility_type=getattr(r, "mobility_type", None),
+        manipulators=list(getattr(r, "manipulators", []) or []),
+        payload_capacity=float(getattr(r, "payload_capacity", 0) or 0),
+        reach=float(getattr(r, "reach", 0) or 0),
+        sensors=list(getattr(r, "sensors", []) or []),
+        sensor_range=float(getattr(r, "sensor_range", 0) or 0),
+        communication_protocols=list(getattr(r, "communication_protocols", []) or []),
+        safety_features=list(getattr(r, "safety_features", []) or []),
+        special_functions=list(getattr(r, "special_functions", []) or []),
+        processing_power=float(getattr(r, "processing_power", 0) or 0),
+        autonomy_level=str(getattr(r, "autonomy_level", "")),
+        battery_life=float(getattr(r, "battery_life", 0) or 0),
+        max_speed=float(getattr(r, "max_speed", 1.0) or 1.0),
+    )
+
+def _task_name_view(t):
+    # Try to read nl_description if present; otherwise just pass the task_type
+    d = {
+        "task_id": getattr(t, "task_id", None),
+        "task_type": getattr(t, "task_type", None),
+    }
+    # If your TaskDescription stores the strict profile name or a custom field, add it here:
+    desc = getattr(t, "nl_description", None) or getattr(t, "strict_profile_name", None)
+    if isinstance(desc, str):
+        d["nl_description"] = desc
+    return d
+
+def evaluate_suitability_from_names_with_llm(robots, tasks, model="gpt-4.1-nano") -> np.ndarray:
+    evaluate_suitability_from_names_with_llm._is_llm_batch = True
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    R = [_to_jsonable(_robot_min_view(r)) for r in robots]
+    T = [_to_jsonable(_task_name_view(t)) for t in tasks]
+
+
+    text_prompt = build_name_only_prompt(
+        robots_json=json.dumps(R, ensure_ascii=False),
+        tasks_json=json.dumps(T, ensure_ascii=False)
+    )
+
+    # Chat API (fill in your SDK call)
+    # Example OpenAI Chat Completions:
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content":  "You are a careful assistant that outputs only the requested format."},
+            {"role": "user", "content": text_prompt}],
+        # respect model limitations (e.g., do NOT set temperature for 5-nano if disallowed)
+    )
+    content = resp.choices[0].message.content
+
+    # after you get the model's raw text in variable `text`
+    M = _parse_output_matrix(content, nR=len(robots), nT=len(tasks))
+    if M is None:
+        # fallback: tiny random noise to break ties, or zeros
+        M = np.full((len(robots), len(tasks)), 0.0, dtype=float)
+    return M
+
+
+    # # Parse the OUTPUT matrix
+    # m = re.search(r"OUTPUT\s*\[\s*(.*)\s*\]\s*$", content, re.S)
+    # if not m:
+    #     raise ValueError("LLM did not return a valid OUTPUT matrix.")
+    # body = "[" + m.group(1).strip() + "]"
+    # M = np.array(json.loads(body), dtype=float)
+
+    # # Safety shape check
+    # if M.shape != (len(R), len(T)):
+    #     raise ValueError(f"Matrix shape {M.shape} does not match robots={len(R)} tasks={len(T)}.")
+
+    # return M
+
+
+def make_pairwise_from_batch(batch_fn, robots_all, tasks_all):
+    """
+    Wrap a batch scorer f(robots, tasks)->matrix into a pairwise scorer g(robot, task)->float.
+    Caches the matrix so we only call the LLM once per run.
+    """
+    cache = {"M": None}
+    r_index = {r.robot_id: i for i, r in enumerate(robots_all)}
+    t_index = {t.task_id: j for j, t in enumerate(tasks_all)}
+
+    def g(robot, task):
+        if cache["M"] is None:
+            M = batch_fn(robots_all, tasks_all)
+            if not isinstance(M, np.ndarray):
+                M = np.array(M, dtype=float)
+            cache["M"] = M.astype(float)
+        return float(cache["M"][r_index[robot.robot_id], t_index[task.task_id]])
+    return g
+
 
 def calculate_total_suitability(assignment: List[Tuple[int, int]], suitability_matrix: List[List[float]]) -> float:
     """
@@ -1117,26 +1681,62 @@ def check_zero_suitability(assignment: List[Tuple[int, int]], suitability_matrix
     
     return False  # No zero suitability ratings found
 
-def calculate_suitability_matrix(robots: List[CapabilityProfile], tasks: List[TaskDescription], scorer: ScoreFn) -> np.ndarray:
-    """
-    Calculates the suitability matrix for the given robots and tasks.
+# def calculate_suitability_matrix(robots: List[CapabilityProfile], tasks: List[TaskDescription], scorer: ScoreFn) -> np.ndarray:
+#     """
+#     Calculates the suitability matrix for the given robots and tasks.
     
-    Parameters:
-        robots: List of robot profiles.
-        tasks: List of task descriptions.
-        suitability_method: The name of the suitability evaluation function.
+#     Parameters:
+#         robots: List of robot profiles.
+#         tasks: List of task descriptions.
+#         suitability_method: The name of the suitability evaluation function.
     
-    Returns:
-        suitability_matrix: A 2D numpy array representing the suitability scores of each robot-task pair.
-    """
-    suitability_matrix = np.zeros((len(robots), len(tasks)), dtype=float)
+#     Returns:
+#         suitability_matrix: A 2D numpy array representing the suitability scores of each robot-task pair.
+#     """
+#     suitability_matrix = np.zeros((len(robots), len(tasks)), dtype=float)
 
-    # Evaluate suitability of each robot for each task
-    for i, robot in enumerate(robots):
-        for j, task in enumerate(tasks):
-            # suitability_score = globals()[suitability_method](robot, task)
-            # suitability_matrix[i][j] = suitability_score
-            suitability_matrix[i, j] = scorer(robot, task)
+#     # Evaluate suitability of each robot for each task
+#     for i, robot in enumerate(robots):
+#         for j, task in enumerate(tasks):
+#             # suitability_score = globals()[suitability_method](robot, task)
+#             # suitability_matrix[i][j] = suitability_score
+#             suitability_matrix[i, j] = scorer(robot, task)
             
-    return suitability_matrix
+#     return suitability_matrix
+
+def calculate_suitability_matrix(
+    robots: List, 
+    tasks: List, 
+    scorer: Callable[..., object]
+) -> NDArray[np.float64]:
+    """
+    Compute suitability matrix using either:
+      • a batch scorer: scorer(robots, tasks) -> ndarray[float] (R x T)
+      • a pairwise scorer: scorer(robot, task) -> float
+
+    The function auto-detects which kind you passed by first attempting a batch call.
+    If that fails or doesn't return the right shape, it falls back to pairwise.
+    """
+    R, T = len(robots), len(tasks)
+    expected_shape = (R, T)
+
+    # --- Try batch mode first (this is ideal for LLM-based scoring) ---
+    try:
+        maybe_matrix = scorer(robots, tasks)  # if scorer is batch, this should work
+        if isinstance(maybe_matrix, np.ndarray) and maybe_matrix.shape == expected_shape:
+            M = maybe_matrix.astype(float, copy=False)
+            return np.clip(M, 0.0, 1.0)
+    except Exception:
+        # Not a batch scorer (or it failed) → fall back to pairwise
+        pass
+
+    # --- Pairwise fallback ---
+    M = np.zeros(expected_shape, dtype=float)
+    for i, r in enumerate(robots):
+        for j, t in enumerate(tasks):
+            try:
+                M[i, j] = float(scorer(r, t))
+            except Exception:
+                M[i, j] = 0.0
+    return np.clip(M, 0.0, 1.0)
 

@@ -6,6 +6,7 @@ import time
 from hvbta.models import CapabilityProfile, TaskDescription
 from .assignments import generate_random_assignments
 from hvbta.suitability import calculate_suitability_matrix, calculate_total_suitability
+from .misc_assignment import build_submatrix_from_scorer
 
 def jv_task_allocation(matrix):
     matrix = np.array(matrix)
@@ -282,7 +283,7 @@ def reassign_robots_to_tasks_with_method(
         tasks: List[TaskDescription], 
         num_candidates: int, 
         voting_method: str, 
-        suitability_method: Callable, 
+        suitability_scorer: Callable, 
         unassigned_robots: List[str], 
         unassigned_tasks: List[str], 
         allocation_method: Callable[[List[List[float]]], List[Tuple[int, int]]], 
@@ -314,13 +315,18 @@ def reassign_robots_to_tasks_with_method(
     urobots = [robot for robot in robots if not robot.assigned]
     utasks  = [task for task in tasks if not task.assigned]
 
-    suitability_matrix = calculate_suitability_matrix(urobots, utasks, suitability_method)
+    # Early outs
+    if not urobots or not utasks:
+        return {}, unassigned_robots, unassigned_tasks, 0.0, 0.0
+
+    suitability_matrix = build_submatrix_from_scorer(urobots, utasks, suitability_scorer)
     output, score, length = assign_tasks_with_method(allocation_method, suitability_matrix)
 
     assigned_pairs = output[0]
     return_assignments = {}
     unassigned_robots = [urobots[i].robot_id for i in output[1]]
     unassigned_tasks = [utasks[j].task_id for j in output[2]]
+
     for (robot_idx, task_idx) in assigned_pairs:
         # print(f"UROBOT: {urobots[robot_idx].robot_id} | UTASK: {utasks[task_idx].task_id}")
         r = urobots[robot_idx]
@@ -337,36 +343,42 @@ def reassign_robots_to_tasks_with_method(
     
     # Check for stealing tasks from already assigned robots
     free_robots = [r for r in robots if not r.assigned]
-    for task in tasks:
-        current = task.assigned_robot
-        if current is None:
-            continue
-        current_suitability = suitability_method(current, task)
-        # find the best free robot for this task
-        best, best_suit = None, current_suitability
-        for r in free_robots:
-            s = suitability_method(r, task)
-            if s > best_suit:
-                best, best_suit = r, s
-        # Inertia check: if the best free robot's suitability is not significantly better, skip stealing
-        if best and (best_suit - current_suitability) >= inertia_threshold:
-            # unassign the current robot from the task
-            current.current_task = None
-            current.assigned = False
-            if current.robot_id not in unassigned_robots:
-                unassigned_robots.append(current.robot_id)
-            # update the task's assigned robot
-            best.current_task = task
-            best.assigned = True
-            best.tasks_attempted += 1
-            task.assigned_robot = best
-            start_positions[best.robot_id] = best.location
-            goal_positions[best.robot_id] = task.location
-            # remove from free list and unassigned robots
-            free_robots.remove(best)
-            if best.robot_id in unassigned_robots:
-                unassigned_robots.remove(best.robot_id)
+    if free_robots:
+        for task in tasks:
+            current = task.assigned_robot
+            if current is None:
+                continue
 
-    print(f"Reassign Score: {score}, Reassign Length: {length}")
+            current_suitability = suitability_scorer(current, task)
+            # find the best free robot for this task
+            best, best_suit = None, current_suitability
+            for r in free_robots:
+                s = suitability_scorer(r, task)
+                if s > best_suit:
+                    best, best_suit = r, s
+
+            # Inertia check: if the best free robot's suitability is not significantly better, skip stealing
+            if best and (best_suit - current_suitability) >= inertia_threshold:
+                # unassign the current robot from the task
+                current.current_task = None
+                current.assigned = False
+                if current.robot_id not in unassigned_robots:
+                    unassigned_robots.append(current.robot_id)
+
+                # update the task's assigned robot
+                best.current_task = task
+                best.assigned = True
+                best.tasks_attempted += 1
+                task.assigned_robot = best
+
+                start_positions[best.robot_id] = best.location
+                goal_positions[best.robot_id] = task.location
+
+                # remove from free list and unassigned robots
+                free_robots.remove(best)
+                if best.robot_id in unassigned_robots:
+                    unassigned_robots.remove(best.robot_id)
+
+    # print(f"Reassign Score: {score}, Reassign Length: {length}")
 
     return return_assignments, unassigned_robots, unassigned_tasks, score, length

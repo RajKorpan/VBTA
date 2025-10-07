@@ -2,6 +2,15 @@ import random
 from typing import List, Tuple
 from hvbta.models import CapabilityProfile, TaskDescription
 import hvbta.generation as G
+import numpy as np
+
+def build_submatrix_from_scorer(robots, tasks, scorer):
+    M = np.zeros((len(robots), len(tasks)), dtype=float)
+    for i, r in enumerate(robots):
+        for j, t in enumerate(tasks):
+            M[i, j] = scorer(r, t)
+    return M
+
 
 def unassign_task_from_robot(robot: CapabilityProfile, tasks: List[TaskDescription], unassigned_robots: List[str], unassigned_tasks: List[str]):
     task_id = robot.current_task.task_id

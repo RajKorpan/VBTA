@@ -138,7 +138,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
         "duration": random.randint(3, 6),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Operate valves, switches, and panels; carry small parts; precise manipulation in plant rooms."
     },
     {
         "task_type": "utilities", #bucket
@@ -152,7 +153,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
         "duration": random.randint(3, 6),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Transport construction materials, clear or move small bulk materials near utility corridors; load/unload with a bucket."
     },
     {
         "task_type": "debris", #gripper
@@ -166,7 +168,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
         "duration": random.randint(3, 6),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Pick and remove scattered debris in cluttered passages; careful grasping and placement."
     },
     {
         "task_type": "debris", #bucket
@@ -180,7 +183,9 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
         "duration": random.randint(3, 6),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Scoop and relocate piles of loose debris; continuous removal in uneven terrain.",
+        
     },
     {
         "task_type": "delivery",
@@ -195,6 +200,7 @@ STRICT_TASK_PROFILES = [
         "safety_protocols": ["obstacle detection", "emergency stop"],
         "duration": random.randint(2, 5),
         "performance_metric": "time taken",
+        "nl_description": "Fetch-and-carry small payloads point-to-point through indoor/outdoor corridors.",
     },
     {
         "task_type": "assembly",
@@ -209,6 +215,7 @@ STRICT_TASK_PROFILES = [
         "safety_protocols": ["collision avoidance", "emergency stop"],
         "duration": random.randint(4, 7),
         "performance_metric": "accuracy",
+        "nl_description": "Fixture placement, fastening, dispensing, or welding with moderate precision in crowded areas.",
     },
     {
         "task_type": "excavate",
@@ -222,7 +229,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio"],
         "safety_protocols": ["overload protection", "obstacle detection"],
         "duration": random.randint(5, 7),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Dig, trench, or remove soil/rubble; sustained scooping with high payload demands.",
     },
     {
         "task_type": "item elevation",
@@ -236,7 +244,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "emergency stop"],
         "duration": random.randint(3, 5),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Lift and hold items at height; stable hoisting and precise placement are important.",
     },
     {
         "task_type": "lay bricks",
@@ -250,7 +259,8 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Wi-Fi"],
         "safety_protocols": ["collision avoidance", "overheat protection"],
         "duration": random.randint(6, 10),
-        "performance_metric": "accuracy"
+        "performance_metric": "accuracy",
+        "nl_description": "Pick, mortar/dispense, and place bricks with consistent accuracy and alignment.",
     },
     {
         "task_type": "scaffold",
@@ -264,6 +274,7 @@ STRICT_TASK_PROFILES = [
         "communication_requirements": ["Radio", "Wi-Fi"],
         "safety_protocols": ["overload protection", "balance control", "emergency stop"],
         "duration": random.randint(3, 6),
-        "performance_metric": "safety compliance"
+        "performance_metric": "safety compliance",
+        "nl_description": "Work at elevation around narrow or vertical structures; drilling and placement on frames.",
     }
 ]

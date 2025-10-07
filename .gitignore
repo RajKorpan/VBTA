@@ -10,3 +10,4 @@ Processed_Benchmarks/
 cbs_test.ipynb
 git-filter-repo
 hvbta/io/results/
+.env
