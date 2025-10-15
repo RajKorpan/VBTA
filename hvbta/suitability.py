@@ -142,6 +142,17 @@ def navigation_suitability(robot_mobility_type: str, robot_size: Tuple[float, fl
     return score if score > 0 else 0.0
 
 def evaluate_suitability_new(robot: CapabilityProfile, task: TaskDescription) -> float:
+    """
+    Evaluates the suitability of a robot for a given task.
+    A higher score indicates better suitability.
+    
+    Parameters:
+        robot: The CapabilityProfile of the robot.
+        task: The TaskDescription of the task.
+    
+    Returns:
+        score: A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
+    """
     score = 0.0
     total_weight = 0.0  # for normalization
 
@@ -349,7 +360,7 @@ def evaluate_suitability_loose(robot: CapabilityProfile, task: TaskDescription) 
         task: The TaskDescription of the task.
     
     Returns:
-        A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
+        score: A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
     """
     score = 0.0
     total_weight = 0.0  # for normalization
@@ -552,7 +563,7 @@ def evaluate_suitability_strict(robot: CapabilityProfile, task: TaskDescription)
         task: The TaskDescription of the task.
     
     Returns:
-        A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
+        score: A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
     """
     score = 0.0
     total_weight = 0.0  # for normalization
@@ -758,7 +769,7 @@ def evaluate_suitability_distance(robot: CapabilityProfile, task: TaskDescriptio
         task: The TaskDescription of the task.
     
     Returns:
-        A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
+        score: A float score representing the suitability of the robot for the task. A score of 0 indicates the robot cannot perform the task.
     """
     score = 0.0
     
@@ -1089,74 +1100,6 @@ def evaluate_suitability_priority(robot: CapabilityProfile, task: TaskDescriptio
 #     print(score)
     return score
 
-# def evaluate_suitability_with_llm(robots: List[CapabilityProfile], tasks: list[TaskDescription]) -> str:
-#     """
-#     Uses a large language model (LLM) to evaluate the suitability of a robot for a given task.
-
-
-#     Parameters:
-#         robot: The CapabilityProfile of the robot.
-#         task: The TaskDescription of the task.
-
-
-#     Returns:
-#         score: A float score (0 to 1) representing the suitability of the robot for the task.
-#     """
-#     prompt = f"""
-#     You are evaluating the suitability of robots for tasks in a multi-robot system.
-   
-#     Robot Details:
-#     {robots}
-#     (Note: Payload Capacity in kg, Reach and Sensor Range in meters, Battery Life in time steps, Processing Power arbitrary measure of computational capability from 1 to 10, Adaptability is a boolean basically acting as a bonus to the score, Size in (length, width, height) meters not pertinent to suitability)
-
-#     Task Details:
-#     {tasks}
-#     (Note: tools_needed[0] is the required sensors list. Tools_needed[1] is the required manipulators list. Difficulty is on a 1-10 scale pertaining to robot Processing Power, Location is (x, y, z) coordinates, Duration is in time steps.)
-
-#     Based on the robot capabilities and the task requirements, *please rate the suitability of each robot-task pair on a scale of 0 to 1, where 0 means the robot is completely unsuitable and 1 means it is perfectly suited.*
-#     When evaluating whether the robot has the CRITICAL requirements, ONLY check the following three fields:
-
-#     1. Manipulators (only compare against the tasks's tools_needed[1])
-#     2. Navigation Constraints (assume aerial and hovering can circumvent ground conditions)
-#     3. Payload Capacity
-
-#     Only the these three fields are critical (Manipulators, Navigation, Payload). Do not consider any other field, like Reach, as critical. The robot should only receive a score of 0 **if one or more of those THREE specific requirements are not satisfied**.
-#     Once the critical requirements (Tools Needed, Navigation Constraints, and Payload Capacity) are satisfied, evaluate all OTHER attributes. All other capabilities and requirements should still influence the score between 0 and 1 (if the critical requirements are met).
-#     When comparing multi-value attributes (such as Environmental Resistance, Sensors, Communication Protocols, Special Functions, or Safety Features), treat them as **matched** if the robot satisfies the **majority** of the required values. If it doesn't reach majority, but is still not 100% unmatched, give *partial credit*.  
-
-#     *Duration is how many time steps are required to finish a task, once the robot arrives at the task. Use it to calculate whether or not the robot has enough battery to both arrive at the site, and complete the task*
-#     *Task priority level should be compared with robot's autonomy level. Task's difficulty should be compared with robot's processing power. If robot is adaptable, add to the score, automatically. A robot's special functions should be compared to the overall requirements of the task*.   
-
-#     Output Format:
-#     Return a 2D suitability matrix:
-#         Rows = robots.
-#         Columns = tasks.
-#         Each entry = suitability score for that robot-task pair (float between 0 and 1).    
-#     Make sure the output section only has the title "OUTPUT" and the suitability matrix, no additional words in this section
-
-#     Example Output (for 3 robots x 3 tasks):
-#     [
-#         [0.9, 0.7, 0.0],
-#         [0.4, 0.8, 0.6],
-#         [0.0, 0.3, 1.0]
-#     ]
-# """
-
-    
-#     #Provide ONLY a single number between 0 and 1. Do not include any words, punctuation, or explanations.
-#     score = 0.0
-#     try:
-#         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-#         response = client.responses.create(
-#             model="gpt-4.1-mini",
-#             input=prompt
-#         )
-#         score = response.output_text
-#     except Exception as e:
-#         print(f"Error: {response}")
-#
-#    return score
-
 # --- Minimal serializers so the prompt stays short & cheap ---
 def _robot_to_dict(r):
     return {
@@ -1393,163 +1336,6 @@ OUTPUT
 with floats in [0,1]. No extra text after the matrix.
 """
 
-
-# def evaluate_suitability_with_llm_batch(robots: List, tasks: List) -> np.ndarray:
-#     """
-#     Call an LLM once to score ALL robot×task pairs.
-#     Returns a float matrix of shape (len(robots), len(tasks)).
-#     """
-#     R = [_to_jsonable(_robot_to_dict(r)) for r in robots]
-#     T = [_to_jsonable(_task_to_dict(t))  for t in tasks]
-
-#     text_prompt = f"""
-#     You are scoring suitability of robots for tasks in a multi-robot system.
-#     Return a 2D matrix of floats in [0,1], with rows = robots and columns = tasks.
-#     Do not print explanations outside the OUTPUT section.
-
-#     Data
-#     Robots (JSON):
-#     {json.dumps(R, default=_json_default)}
-
-#     Tasks (JSON):
-#     {json.dumps(T, default=_json_default)}
-
-#     - Units: payload (kg), reach & sensor_range (meters), battery_life (time steps).
-#     - tools_needed[0] = required sensors; tools_needed[1] = required manipulators.
-#     - difficulty on 1–10 scale; duration in time steps.
-#     - location = (x,y); max_speed in grid cells / step.
-#     - Robot fields like autonomy_level, environmental_resistance, safety_features, communication_protocols, special_functions may be lists or enums.
-
-#     Scoring rules (follow exactly)
-#     Hard-fail (score = 0.0) only if any of the 3 CRITICAL constraints fail:
-#     1. Manipulators: task.tools_needed[1] must be ⊆ robot.manipulators (allow partial credit logic only if both are non-empty and ≥50% overlap; otherwise hard-fail).
-#     2. Navigation constraints: if task.navigation_constraints prohibit robot’s mobility type and robot is not aerial/hovering, then hard-fail. (If aerial/hovering, ignore ground constraints.)
-#     3. Payload capacity: robot.payload_capacity < required → hard-fail.
-#     If no hard-fail, compute a continuous score as a weighted sum below, each subscore in [0,1], then clamp the final result to [0.05, 0.99] unless it is exactly perfect (1.0). This avoids excessive 0.0/1.0.
-
-#     Component weights (sum = 1.00)
-#     - Payload adequacy (0.12): min(1, robot.payload_capacity / required_payload). If no exact requirement given, use 1.
-#     - Manipulator coverage (0.10): |intersection| / |required_manipulators| (1 if none required).
-#     - Sensor coverage (0.08): |intersection| / |required_sensors| (1 if none required).
-#     - Communication match (0.05): fraction of required protocols present (1 if none required).
-#     - Safety compliance (0.06): fraction of required safety features present (1 if none required).
-#     - Environmental fit (0.06): fraction of required environmental conditions present (1 if none required).
-#     - Reach fit (0.06): if required_reach given: min(1, robot.reach / required_reach); else 1.
-#     - Autonomy vs priority (0.07):
-#         - urgent/high: fully autonomous=1.0; semi=0.7; teleop=0.5
-#         - medium: fully=1.0; semi=0.9; teleop=0.7
-#         - low: fully=1.0; semi=0.95; teleop=0.9
-#     - Processing vs difficulty (0.10): sigmoid: 1/(1+exp(-(robot.processing_power - difficulty))). Normalize difficulty roughly to 1–10.
-#     - Battery sufficiency (0.12):
-#         - travel_time = distance(robot.location, task.location)/max(0.1, robot.max_speed)
-#         - total_time = travel_time + task.duration
-#         - if robot.battery_life < total_time → 0.0; else = min(1, robot.battery_life/total_time) capped at 1.2 and then divided by 1.2.
-#     - Proximity/sensor awareness (0.06):
-#         - Let map_diag ≈ max_map_distance (or infer from max x,y).
-#         - proximity = 1 − min(1, distance/map_diag).
-#         - sensor_help = 1 if robot.sensor_range ≥ distance, else max(0, robot.sensor_range/distance).
-#         - subscore = 0.5proximity + 0.5sensor_help.
-#     - Special functions relevance (0.07): fraction of “suggested special functions” for task type that robot has (1 if none suggested).
-#     - Adaptability bonus (0.05): 1.0 if robot.adaptability true, else 0.7.
-#     - Navigation fit soft factor (0.10) (only if not hard-failed):
-#         - If constraints exist and robot not aerial/hovering: 0.7 if partially mitigated by sensors/safety (>=50% coverage of the required navigation-related items), else 0.4.
-#         - If aerial/hovering or no special constraints: 1.0.
-#     If any required list is empty or missing, treat that component as 1.0 (no penalty).
-#     For all set overlaps, compute as |intersection| / max(1, |required|).
-
-#     Final Score
-#     score = sum(weight_i * subscore_i)
-#     Clamp: if score in (0,1) and not exactly perfect, output min(0.99, max(0.05, score)).
-#     If hard-fail occurred earlier → 0.0.
-
-#     Output
-
-#     Return only:
-#     OUTPUT
-#     [
-#       [r1_t1, r1_t2, ..., r1_tM],
-#       [r2_t1, r2_t2, ..., r2_tM],
-#       ...
-#     ]
-#     - With N robots and M tasks.
-#     - Each rX_tY is a float (0–1) following the rules above.
-#     - No other text after OUTPUT.
-#     Example (format only):
-#     OUTPUT
-#     [
-#       [0.78, 0.41, 0.00],
-#       [0.62, 0.85, 0.57]
-#     ]
-#     """
-
-#     prompt = {
-#         "role": "user",
-#         "content": (
-#             text_prompt.strip()
-#             .replace("\n    ", "\n")  # outdent for readability
-#             .replace("\n\n", "\n")     # remove double newlines
-#         )
-#     }
-# #     messages = [
-# #     {
-# #         "role": "system",
-# #         "content": (
-# #             "You are an expert robotics evaluator in a multi-robot task allocation experiment. "
-# #             "You must objectively rate the suitability of each robot-task pair based on their attributes, "
-# #             "giving numerical scores from 0.0 to 1.0 that reflect nuanced alignment, not just binary checks."
-# #         ),
-# #     },
-# #     {
-# #         "role": "user",
-# #         "content": (
-# #             text_prompt.strip()
-# #             .replace("\n    ", "\n")
-# #             .replace("\n\n", "\n")
-# #         ),
-# #     },
-# # ]
-
-#     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-#     # You can use either the new Responses API or chat.completions.
-#     # Here's chat.completions for broad compatibility:
-#     resp = client.chat.completions.create(
-#         model="gpt-4.1-nano",   # pick your model
-#         messages=[prompt],
-#         temperature=0.0,
-#     )
-
-#     text = resp.choices[0].message.content.strip()
-
-#     # Expect pure JSON; but be defensive in case the model adds noise
-#     # Try to extract the first top-level JSON array
-#     match = re.search(r"\[.*\]", text, flags=re.S)
-#     if not match:
-#         # fallback: return zeros
-#         return np.zeros((len(robots), len(tasks)), dtype=float)
-
-#     try:
-#         matrix = json.loads(match.group(0))
-#         arr = np.array(matrix, dtype=float)
-#     except Exception:
-#         return np.zeros((len(robots), len(tasks)), dtype=float)
-
-#     # shape check
-#     expected = (len(robots), len(tasks))
-#     if arr.shape != expected:
-#         # try to coerce row/col if user gave transposed; if still wrong, fallback
-#         if arr.shape == expected[::-1]:
-#             arr = arr.T
-#         else:
-#             return np.zeros(expected, dtype=float)
-
-#     # clamp to [0,1] just in case
-#     arr = np.clip(arr, 0.0, 1.0)
-#     return arr
-
-# import numpy as np
-
-
 def _robot_min_view(r):
     return dict(
         robot_id=getattr(r, "robot_id", None),
@@ -1581,6 +1367,16 @@ def _task_name_view(t):
     return d
 
 def evaluate_suitability_from_names_with_llm(robots, tasks, model="gpt-4.1-nano") -> np.ndarray:
+    """
+    Evaluate suitability of robots for tasks using an LLM based on names and minimal info.
+    Returns an (R, T) float array with scores in [0,1].
+    Parameters:
+        robots: List of CapabilityProfile objects.
+        tasks: List of TaskDescription objects.
+        model: The LLM model to use (default "gpt-4.1-nano").
+    Returns:
+        M: An (R, T) numpy array of float suitability scores in [0,1].
+    """
     evaluate_suitability_from_names_with_llm._is_llm_batch = True
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 

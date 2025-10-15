@@ -2,6 +2,7 @@ import random
 from typing import List, Tuple
 from hvbta.models import CapabilityProfile, TaskDescription
 from hvbta.allocators.misc_assignment import unassign_task_from_robot
+from hvbta.suitability import navigation_suitability
 
 def simulate_time_step(
     robots: List[CapabilityProfile],
@@ -58,16 +59,34 @@ def simulate_time_step(
                 if robot.battery_life == 0: 
                     # print(f"Robot {robot.robot_id} failed to reach task {task.task_id} due to mechanical failure.")
                     # get task id and task index
-                    unassign_task_from_robot(robot, tasks=tasks, unassigned_robots=unassigned_robots, unassigned_tasks=unassigned_tasks)
+                    unassign_task_from_robot(robot, task, unassigned_robots=unassigned_robots, unassigned_tasks=unassigned_tasks)
                     continue
 
             # If the robot is at the task, increment time on task
             if robot.remaining_distance == 0:
+                required_caps = getattr(task, "required_capabilities", None) or []
+                payload_required = None
+                for req in required_caps:
+                    if isinstance(req, str) and "payload capacity" in req.lower():
+                        try:
+                            payload_required = float(req.split(">=")[-1].strip())
+                        except ValueError:
+                            payload_required = None
+                tools_needed = getattr(task, "tools_needed", None) or []
+                sensors_required = tools_needed[0] if len(tools_needed) > 0 and tools_needed[0] else []
+                manipulators_required = tools_needed[1] if len(tools_needed) > 1 and tools_needed[1] else []
+
+                suitability = getattr(robot, "current_task_suitability", None)
+                if suitability is None:
+                    suitability = getattr(robot, "current_task_suitability", 0.5)
+                
+                suitability = max(0.0, min(1.0, suitability))  # Clamp suitability between 0 and 1
+                speed_factor = 0.5 + 1.5 * suitability  # Speed factor between 0.5 (half speed for 0 suitability) and 2.0 (double speed for 1 suitability)
                 #robot.time_on_task += time_step
                 robot.location = task.location  # Ensure robot is at the task location
                 start_positions[robot.robot_id] = robot.location  # Update start position to task location
                 robot.battery_life -= time_step
-                task.time_left -= time_step
+                task.time_left -= time_step * speed_factor  # Task progresses faster with higher suitability
                 # suitability = globals()[suitability_method](robot, task)
                 # failure_probability = 1 / (100 * (suitability + 1))  # Higher suitability, lower failure rate
                 # Check if the task is completed
@@ -83,6 +102,8 @@ def simulate_time_step(
                     robot.time_on_task = 0  # Reset time on task so it can begin work (time on task is a counter for how long it takes to complete a task)
                     robot.current_path = []
                     robot.remaining_distance = 0
+                    robot.current_task_suitability = None
+                    task.current_suitability = None
                     # move it to unassigned robots list with check
                     rid = robot.robot_id
                     if rid not in unassigned_robots:
@@ -93,33 +114,67 @@ def simulate_time_step(
                         tasks.remove(task)
                     except ValueError:
                         pass
-                elif robot.battery_life <= 0:
+                if robot.battery_life <= 0:
                     if getattr(task, "reset_progress", False): # Only resets progress for certain tasks
                         task.time_left = task.time_to_complete
                     else:
                         task.time_to_complete = task.time_left
                     unassign_task_from_robot(
-                        robot, tasks=tasks, 
+                        robot, task,
                         unassigned_robots=unassigned_robots, 
                         unassigned_tasks=unassigned_tasks
                     )
 
-                elif task.performance_metrics == "safety compliance":
+                if task.performance_metrics == "safety compliance":
                     if robot.safety_features:
                         matched_safety = sum(safety in robot.safety_features for safety in task.safety_protocols)
                         safety_score = matched_safety/max(1, len(task.safety_protocols))
                         if safety_score < 0.75 and (random.random() > 0.75):
                             unassign_task_from_robot(
-                                robot, tasks=tasks, 
+                                robot, task, 
                                 unassigned_robots=unassigned_robots, 
                                 unassigned_tasks=unassigned_tasks
                             )
                     else:
                         unassign_task_from_robot(
-                            robot, tasks=tasks, 
+                            robot, task, 
                             unassigned_robots=unassigned_robots, 
                             unassigned_tasks=unassigned_tasks
                         )
+
+                if payload_required is not None and robot.payload_capacity < payload_required:
+                    unassign_task_from_robot(
+                        robot, task, 
+                        unassigned_robots=unassigned_robots, 
+                        unassigned_tasks=unassigned_tasks
+                    )
+                    continue
+                
+                if sensors_required and not any(sensor in robot.sensors for sensor in sensors_required):
+                    unassign_task_from_robot(
+                        robot, task, 
+                        unassigned_robots=unassigned_robots, 
+                        unassigned_tasks=unassigned_tasks
+                    )
+                    continue
+
+                if manipulators_required and not any(tool in robot.manipulators for tool in manipulators_required):
+                    unassign_task_from_robot(
+                        robot, task,
+                        unassigned_robots=unassigned_robots,
+                        unassigned_tasks=unassigned_tasks,
+                    )
+                    continue
+                
+                nav_score = navigation_suitability(robot.mobility_type, robot.size, task.navigation_constraints or [])
+                if nav_score == 0.0:
+                    unassign_task_from_robot(
+                        robot, task,
+                        unassigned_robots=unassigned_robots,
+                        unassigned_tasks=unassigned_tasks,
+                    )
+                    continue
+
         elif not robot.assigned:
             unassigned_count += 1
             

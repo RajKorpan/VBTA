@@ -116,7 +116,7 @@ def main_simulation(
         # If True, use ThreadPoolExecutor instead of ProcessPoolExecutor for parallel A*.
         # Threads avoid multiprocessing pickling/Windows spawn issues but may be slower
         # for CPU-bound A* due to the GIL. Default is False (use processes).
-        use_threads: bool = True):
+        use_threads: bool = True,):
     print(f"SUITABILITY METHOD: {suitability_method}")
 
     voting_methods = {
@@ -211,6 +211,7 @@ def main_simulation(
                     print(f"Warning: no A* path found for agent {rid}")
                     solution[rid] = None
 
+    # NOTE: add an int that can return avg path length for analysis
     # Assign computed paths back to robot objects
     id_to_index = {r.robot_id: idx for idx, r in enumerate(robots)}
     for robot_id, path in solution.items():
@@ -220,6 +221,7 @@ def main_simulation(
             r = robots[id_to_index[robot_id]]
             r.current_path = path
             r.remaining_distance = max(0, len(path) - 1)
+    avg_path_length = np.mean([len(path)-1 for path in solution.values() if path is not None and len(path) > 1])
 
     # Initialize planner state variables used later
     previous_active, previous_goals = state_check(robots)
@@ -319,6 +321,7 @@ def main_simulation(
                 pairwise_scorer = S.make_pairwise_from_batch(lambda *_: suitability_matrix, robots, tasks)
             else:
                 pairwise_scorer = sm
+            
 
             if voting_method in voting_methods:
                 print(f"REASSIGNING WITH VOTING METHOD: {voting_method_name}")
@@ -386,7 +389,7 @@ def main_simulation(
     overall_success_rate = total_success / total_tasks
     avg_reassignment_score = (total_reassignment_score / total_reassignments) if total_reassignments > 0 else 0.0
     print(f"Voting: Total reward: {total_reward}, Overall success rate: {overall_success_rate:.2%}, Tasks completed: {total_success}, Reassignment Time: {total_reassignment_time}, Reassignment Score: {total_reassignment_score}, \ntotal reassignments: {total_reassignments}, total tasks: {total_tasks}, Total robots: {len(robots)}")
-    return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments, min(total_time_steps, max_time_steps), avg_reassignment_score)
+    return (total_reward, overall_success_rate, total_success, total_reassignment_time, total_reassignment_score, total_reassignments, min(total_time_steps, max_time_steps), avg_reassignment_score, avg_path_length)
 
 
 def benchmark_simulation(
@@ -406,7 +409,7 @@ def benchmark_simulation(
         robots_to_add: int = 1, 
         robots_to_remove: int = 1,
         robot_generation_strict: bool = True,
-        task_generation_strict: bool = True):
+        task_generation_strict: bool = True,):
     start_time = time.perf_counter_ns()
     output_tuple = main_simulation(
         output, robots, tasks, num_candidates, voting_method, 
@@ -445,10 +448,10 @@ if __name__ == "__main__":
         allocation_names = [func_name(f) for f in allocation_methods]
         all_methods = voting_methods + allocation_methods
         suitability_methods = [
-            S.evaluate_suitability_new, 
-            S.evaluate_suitability_loose, 
+            # S.evaluate_suitability_new, 
+            # S.evaluate_suitability_loose, 
             S.evaluate_suitability_strict,
-            S.evaluate_suitability_from_names_with_llm
+            # S.evaluate_suitability_from_names_with_llm
             ]
         small_maps = [
             r"den201d.map", # 37  x 37
@@ -498,19 +501,24 @@ if __name__ == "__main__":
         # )
 
         # randomly chosen maps from strict run
+        # map_paths = [
+        #     r"den020d.map", # 118 x 89
+        #     r"den404d.map", # 34  x 28
+        #     r"den405d.map", # 42  x 74
+        #     r"den408d.map", # 50  x 34
+        #     r"isound1.map", # 63  x 55
+        #     r"lak102d.map", # 30  x 38
+        #     r"lak108d.map", # 26  x 27
+        #     r"lak203d.map", # 146 x 112
+        #     r"ost002d.map", # 145 x 181
+        # ]
         map_paths = [
             r"den020d.map", # 118 x 89
-            r"den404d.map", # 34  x 28
-            r"den405d.map", # 42  x 74
-            r"den408d.map", # 50  x 34
-            r"isound1.map", # 63  x 55
-            r"lak102d.map", # 30  x 38
-            r"lak108d.map", # 26  x 27
-            r"lak203d.map", # 146 x 112
-            r"ost002d.map", # 145 x 181
+            # r"den201d.map", # 37  x 37
+            # r"arena.map",   # 49  x 49
         ]
         
-        max_time_steps = 500
+        # max_time_steps = 500
         # robot_sizes = [5, 10, 20, 30, 40, 50, 100]
         # task_sizes = [5, 10, 20, 30, 40, 50, 100]
         robot_sizes = [10]
@@ -531,7 +539,10 @@ if __name__ == "__main__":
         # DO SIMULATION FOR ALL MAPS
         for map_file in full_paths:
             grid = load_map(map_file) # 2D list of 0/1 representing the map
+            HYPOTENUSE = (len(grid)**2 + len(grid[0])**2) ** 0.5
+            max_time_steps = max(500, int(HYPOTENUSE * 3)) # allow enough time steps for longest path plus some buffer
             dims = (len(grid), len(grid[0])) # dimensions of the map grid
+            map_size = "Small" if dims[0] < 40 and dims[1] < 40 else "Medium" if dims[0] < 75 and dims[1] < 75 else "Large"
             obstacles = create_obstacle_list(grid) # list of obstacle coordinates
             map_dict = {
                 'dimension': dims,
@@ -554,7 +565,7 @@ if __name__ == "__main__":
                     'total_reward', 'overall_success_rate', 'total_success', 
                     'total_reassignment_time', 'total_reassignment_score', 
                     'total_reassignments', 'Total Time Steps', 'Average Reassignment Score',
-                    'Execution Time', 'CPU Usage', 'Memory Usage'])
+                    'Average Path Length', 'Execution Time', 'CPU Usage', 'Memory Usage', 'Map Size'])
                 
                 profiles_w.writerow([
                 'Run_ID', 'Map',
@@ -568,10 +579,8 @@ if __name__ == "__main__":
                     for num_tasks in task_sizes:
                         print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                         candidate_sizes = [
-                            # max(1, int((num_robots * num_tasks) * 0.5)),
-                            # max(1, int((num_robots * num_tasks) * 0.75)),
-                            # max(1, int(num_robots * 0.75)),
-                            max(1, int(num_robots * 1.0)),
+                            # max(1, max(int(num_robots * 0.75), int(num_tasks * 0.75))),
+                            max(1, max(int(num_robots * 1.0), int(num_tasks * 1.0))),
                         ]
                         for nc in candidate_sizes:
                             print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
@@ -615,6 +624,7 @@ if __name__ == "__main__":
 
 
                                     if suitability_all_zero(suitability_matrix):
+                                        random_assignment = True
                                         # Voting - random fallback
                                         for method_fn, method_name in zip(voting_methods, voting_names):
                                             print("All suitability scores are zero, randomly assigning tasks to robots.")
@@ -698,5 +708,5 @@ if __name__ == "__main__":
                                             10, 10, 10, robot_generation_strict, task_generation_strict)
                                         # write a single combined row: assignment info + benchmark metrics
                                         row_prefix = assignment_infos[idx] if idx < len(assignment_infos) else [Run_ID, func_name(meth), sm_name, num_robots, num_tasks, nc, 0, 0, 0, 0]
-                                        writer.writerow(row_prefix + list(output_tuple))
+                                        writer.writerow(row_prefix + list(output_tuple) + [map_size])
                                     Run_ID += 1

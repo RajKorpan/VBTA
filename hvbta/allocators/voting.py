@@ -5,6 +5,9 @@ from hvbta.models import CapabilityProfile, TaskDescription
 from hvbta.suitability import calculate_total_suitability, check_zero_suitability, calculate_suitability_matrix
 from .misc_assignment import build_submatrix_from_scorer
 
+def suitability_all_zero(suitability_matrix):
+    return all(value == 0 for row in suitability_matrix for value in row)
+
 def rank_assignments_range(assignments: List[List[Tuple[int, int]]], suitability_matrix: List[List[float]]) -> Tuple[List[float], List[int]]:
     """
     Ranks the given assignments based on their total suitability scores.
@@ -340,11 +343,12 @@ def assign_tasks_randomly(
     # assignment ranking is a list of integers usually from 0 to num_candidates-1 that ranks the assignments
     # but here we just pick a random assignment since they are all equally bad
     k = np.random.randint(0, num_candidates)
-    final_pairs, final_unr_idx, final_unt_idx = [], [], []
-    for i in range(num_candidates):
-        pairs, unr_idx, unt_idx = random_assignments[i]
-        if len(pairs) > len(final_pairs):
-            final_pairs, final_unr_idx, final_unt_idx = pairs, unr_idx, unt_idx
+    final_pairs, final_unr_idx, final_unt_idx = random_assignments[k]
+    # for i in range(num_candidates):
+    #     pairs, unr_idx, unt_idx = random_assignments[i]
+    #     if len(pairs) > len(final_pairs):
+    #         final_pairs, final_unr_idx, final_unt_idx = pairs, unr_idx, unt_idx
+    #         break
     
     end = time.perf_counter_ns()
     length = (end - start) / 1000.0
@@ -416,8 +420,13 @@ def reassign_robots_to_tasks(
         return {}, unassigned_robots, unassigned_tasks, 0.0, 0.0
 
     suitability_matrix = build_submatrix_from_scorer(urobots, utasks, suitability_scorer)
-    output, score, length = assign_tasks_with_voting(
-        urobots, utasks, suitability_matrix, num_candidates, voting_method)
+
+    if suitability_all_zero(suitability_matrix):
+        print("All suitability scores are zero, randomly assigning tasks to robots.")
+        output, score, length = reassign_robots_to_tasks_randomly(robots, tasks, num_candidates, unassigned_robots, unassigned_tasks)
+    else:
+        output, score, length = assign_tasks_with_voting(
+            urobots, utasks, suitability_matrix, num_candidates, voting_method)
 
     # this assigned_pairs only contains the unassigned robots and tasks, I may have to pass in the actual assigned_pairs to update it
     assigned_pairs = output[0] # list of tuples
@@ -427,6 +436,7 @@ def reassign_robots_to_tasks(
 
     for (robot_idx, task_idx) in assigned_pairs:
         # print(f"UROBOT: {urobots[robot_idx].robot_id} | UTASK: {utasks[task_idx].task_id}")
+        pair_score = suitability_matrix[robot_idx][task_idx]
         r = urobots[robot_idx]
         t = utasks[task_idx]
         r.current_task = t
@@ -434,6 +444,8 @@ def reassign_robots_to_tasks(
         t.assigned_robot = r
         r.assigned = True
         t.assigned = True
+        r.current_task_suitability = pair_score
+        t.current_suitability = pair_score
         # update start and goal positions when robots are assigned
         start_positions[r.robot_id] = r.location
         goal_positions[r.robot_id] = t.location
@@ -483,3 +495,78 @@ def reassign_robots_to_tasks(
     # print(f"Reassign Score: {score}, Reassign Length: {length}")
 
     return return_assignments, unassigned_robots, unassigned_tasks, score, length
+
+def reassign_robots_to_tasks_randomly(
+        robots: List[CapabilityProfile],
+        tasks: List[TaskDescription],
+        num_candidates: int,
+        unassigned_robots: List[str],
+        unassigned_tasks: List[str],
+
+) ->Tuple[Tuple[List[Tuple[int, int]], List[int], List[int]], float, float]:
+    """
+    Reassigns unassigned robots to unassigned tasks using random assignments.
+    for use with the all-zero suitability matrix case.
+    
+    Parameters:
+        robots: List of all robot profiles.
+        tasks: List of all task descriptions.
+        num_candidates: Number of candidate assignments to generate.
+        unassigned_robots: List of unassigned robot IDs.
+        unassigned_tasks: List of unassigned task IDs.
+    
+    Returns:
+        return_assignments: Dictionary mapping robot IDs to assigned task IDs.
+        unassigned_robots: List of unassigned robot IDs after reassignment.
+        unassigned_tasks: List of unassigned task IDs after reassignment.
+        score: Total suitability score of the best assignment (always 0.0).
+        length: Time taken for the random assignment process in microseconds.
+    """
+    urobots = [robot for robot in robots if not robot.assigned]
+    utasks = [task for task in tasks if not task.assigned]
+    num_robots = len(urobots)
+    num_tasks = len(utasks)
+
+    random_assignments = generate_random_assignments(num_robots, num_tasks, num_candidates)
+    
+    start = time.perf_counter_ns()
+    # total_scores, assignment_ranking = voting_method(random_assignments, suitability_matrix)
+    # assignment ranking is a list of integers usually from 0 to num_candidates-1 that ranks the assignments
+    # but here we just pick a random assignment since they are all equally bad
+    k = np.random.randint(0, num_candidates)
+    final_pairs, final_unr_idx, final_unt_idx = random_assignments[k]
+    # for i in range(num_candidates):
+    #     pairs, unr_idx, unt_idx = random_assignments[i]
+    #     if len(pairs) > len(final_pairs):
+    #         final_pairs, final_unr_idx, final_unt_idx = pairs, unr_idx, unt_idx
+    #         break
+    
+    end = time.perf_counter_ns()
+    length = (end - start) / 1000.0
+    total_scores = 0.0
+ 
+    assigned_pairs = []
+    unassigned_robots = []
+    unassigned_tasks = []
+
+    print(f"\n\n\n\nPAIRS: {final_pairs} \n\n\n\n UNR: {final_unr_idx} \n\n\n\n UNT: {final_unt_idx}\n\n\n\n")
+
+    for robot_id, task_id in final_pairs:
+        assigned_pairs.append((robot_id, task_id))
+
+    if final_unr_idx is None or final_unt_idx is None:
+        assigned_r = {r for r, _ in assigned_pairs}
+        assigned_t = {t for _, t in assigned_pairs}
+        unassigned_robots = [i for i in range(num_robots) if i not in assigned_r]
+        unassigned_tasks = [j for j in range(num_tasks) if j not in assigned_t]
+    else:
+        unassigned_robots = list(final_unr_idx)
+        unassigned_tasks = list(final_unt_idx)
+
+    filtered_best_assignments = (assigned_pairs, unassigned_robots, unassigned_tasks)
+
+    # print(f"Best assignment in voting {filtered_best_assignments}")
+
+    # best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)
+
+    return filtered_best_assignments, total_scores, length

@@ -47,6 +47,7 @@ def get_unique_task_location(tasks, grid, occupied_locations, max_attempts=100):
 def generate_random_robot_profile(robot_id: str, grid: List[List[int]], occupied_locations: set) -> CapabilityProfile:
     """Random robot with capability masking but all fields are always present.
     Lists are [] never None. Numeric fields exist even if 0."""
+    HYPOTENUSE = (len(grid)**2 + len(grid[0])**2) ** 0.5
 
     # Base capabilities
     # I decided everything is going to have at least one random capability to increase suitability scores, the mask only
@@ -54,7 +55,8 @@ def generate_random_robot_profile(robot_id: str, grid: List[List[int]], occupied
     mobility_type = random.choice(C.MOBILITY_TYPES)
     payload_capacity = round(random.uniform(20.0, 50.0), 1)
     reach = 0.0 if mobility_type in {"aerial"} else round(random.uniform(3.0, 10.0), 1)
-    battery_life = round(random.uniform(max(len(grid), len(grid[0])), max(len(grid), len(grid[0]))*3), 1) # takes into account the size of the map
+    # battery_life = round(random.uniform(max(len(grid), len(grid[0])), max(len(grid), len(grid[0]))*3), 1) # takes into account the size of the map
+    battery_life = max(500, round(random.uniform(HYPOTENUSE, HYPOTENUSE*10), 1)) # takes into account the size of the map
     size = (round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2), round(random.uniform(1.0, 5.0), 2))  # (length, width, height)
     environmental_resistance = _sample(C.ENV_RESISTANCES, 1)
     sensors = _sample(C.SENSORS, 1)  # should not be empty
@@ -154,6 +156,8 @@ def generate_random_task_description(task_id: str, grid: List[List[int]], occupi
     )
 
 def generate_random_robot_profile_strict(robot_id: str, grid: List[List[int]], occupied_locations: set, choice = -1) -> CapabilityProfile:
+    HYPOTENUSE = (len(grid)**2 + len(grid[0])**2) ** 0.5
+
     if choice == -1:
         p = random.choice(STRICT_ROBOT_PROFILES)
     else: 
@@ -165,7 +169,8 @@ def generate_random_robot_profile_strict(robot_id: str, grid: List[List[int]], o
         max_speed=1.0,
         payload_capacity=float(p["payload_capacity"]),
         reach=float(p["reach"]),
-        battery_life=float(p["battery_life"]),
+        # battery_life=float(p["battery_life"]),
+        battery_life=max(500, round(random.uniform(HYPOTENUSE, HYPOTENUSE*10), 1)), # takes into account the size of the map
         size=tuple(p["size"]),
         environmental_resistance=list(p["environmental_resistance"]),
         sensors=list(p["sensors"]),

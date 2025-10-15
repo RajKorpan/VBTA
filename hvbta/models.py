@@ -29,8 +29,10 @@ class CapabilityProfile:
                  tasks_attempted: int,
                  tasks_successful: int,
                  current_path: list, # the path the robot is currently following, if any
-                 assigned: bool,
-                 strict_profile_name: str = ""): # Indicates if the robot is currently assigned to a task
+                 assigned: bool, # Indicates if the robot is currently assigned to a task
+                 strict_profile_name: str = "",
+                 current_task_suitability: float = 0.5,
+                 ): 
         self.robot_id = robot_id
         self.mobility_type = mobility_type
         self.max_speed = max_speed
@@ -91,7 +93,9 @@ class TaskDescription:
                  assigned_robot: Optional["CapabilityProfile"],
                  time_to_complete: float,
                  assigned: bool,
-                 strict_profile_name: str = ""):
+                 strict_profile_name: str = "",
+                 current_suitability: float = 0.5
+                 ):
         self.task_id = task_id
         if (task_id in {"maintenance", "cleaning"}): #figure out tasks that won't have progress reset after interruption
             self.reset_progress = False 

@@ -12,16 +12,18 @@ def build_submatrix_from_scorer(robots, tasks, scorer):
     return M
 
 
-def unassign_task_from_robot(robot: CapabilityProfile, tasks: List[TaskDescription], unassigned_robots: List[str], unassigned_tasks: List[str]):
-    task_id = robot.current_task.task_id
-    t_index = [task.task_id for task in tasks].index(task_id)
+def unassign_task_from_robot(robot: CapabilityProfile, task: TaskDescription, unassigned_robots: List[str], unassigned_tasks: List[str]):
+    # task_id = robot.current_task.task_id
+    # t_index = [task.task_id for task in tasks].index(task_id)
     # unassign task
-    tasks[t_index].assigned_robot = None
-    tasks[t_index].assigned = False
+    task.assigned_robot = None
+    task.assigned = False
     robot.assigned = False
+    task.current_suitability = None
+    robot.current_task_suitability = None
 
     # move it to unassigned tasks list with check
-    tid = tasks[t_index].task_id
+    tid = task.task_id
     if tid not in unassigned_tasks:
         unassigned_tasks.append(tid)
     # unassign robot
