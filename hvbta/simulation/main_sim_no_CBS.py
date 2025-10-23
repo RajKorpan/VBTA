@@ -316,7 +316,8 @@ def main_simulation(
             should_replan_cbs = True
 
         # Reassign unassigned robots to unassigned tasks
-        if should_replan and start_positions and goal_positions:
+        # if should_replan and start_positions and goal_positions:
+        if should_replan:
 
             pairwise_scorer = sm
             if getattr(sm, "_is_llm_batch", False):
