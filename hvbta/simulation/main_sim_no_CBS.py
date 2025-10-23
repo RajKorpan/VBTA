@@ -497,11 +497,11 @@ if __name__ == "__main__":
             r"lak307d.map", # 84  x 84
             r"ost002d.map", # 145 x 181
         ]
-        # map_paths = (
-        # random.sample(small_maps, 3) +
-        # random.sample(medium_maps, 3) +
-        # random.sample(large_maps, 3)
-        # )
+        map_paths = (
+        random.sample(small_maps, 7) +
+        random.sample(medium_maps, 7) +
+        random.sample(large_maps, 7)
+        )
 
         # randomly chosen maps from strict run
         # map_paths = [
@@ -515,20 +515,20 @@ if __name__ == "__main__":
         #     r"lak203d.map", # 146 x 112
         #     r"ost002d.map", # 145 x 181
         # ]
-        map_paths = [
-            # r"den020d.map", # 118 x 89
-            # r"den201d.map", # 37  x 37
-            # r"arena.map",   # 49  x 49
-            r"den204d.map", # 66  x 66
-        ]
+        # map_paths = [
+        #     r"den020d.map", # 118 x 89
+        #     r"den201d.map", # 37  x 37
+        #     r"arena.map",   # 49  x 49
+        #     r"den204d.map", # 66  x 66
+        # ]
         
         # max_time_steps = 500
-        # robot_sizes = [5, 10, 20, 30, 40, 50, 100]
-        # task_sizes = [5, 10, 20, 30, 40, 50, 100]
-        robot_sizes = [10]
-        task_sizes = [100]
+        robot_sizes = [5, 20, 50, 100]
+        task_sizes = [5, 20, 50, 100]
+        # robot_sizes = [10]
+        # task_sizes = [100]
         Run_ID = 1
-        num_repetitions = 1
+        num_repetitions = 20
         add_tasks = False
         add_robots = False
         remove_robots = False
@@ -544,7 +544,6 @@ if __name__ == "__main__":
         for map_file in full_paths:
             grid = load_map(map_file) # 2D list of 0/1 representing the map
             HYPOTENUSE = (len(grid)**2 + len(grid[0])**2) ** 0.5
-            max_time_steps = max(200, int(HYPOTENUSE * 2)) # allow enough time steps for longest path plus some buffer
             dims = (len(grid), len(grid[0])) # dimensions of the map grid
             map_size = "Small" if dims[0] < 40 and dims[1] < 40 else "Medium" if dims[0] < 75 and dims[1] < 75 else "Large"
             obstacles = create_obstacle_list(grid) # list of obstacle coordinates
@@ -553,8 +552,8 @@ if __name__ == "__main__":
                 'obstacles': obstacles
             }
 
-            results_path  = os.path.join(dir_path, f"LLM_simulation_results_{os.path.basename(map_file)}.csv")
-            profiles_path = os.path.join(dir_path, f"LLM_profiles_{os.path.basename(map_file)}.csv")
+            results_path  = os.path.join(dir_path, f"Strict_Generation_simulation_results_{os.path.basename(map_file)}.csv")
+            profiles_path = os.path.join(dir_path, f"Strict_Generation_profiles_{os.path.basename(map_file)}.csv")
 
             with open(results_path, mode="w", newline='') as file, \
                 open(profiles_path, mode="w", newline='') as profile_file:
@@ -584,14 +583,23 @@ if __name__ == "__main__":
                         print(f"\n\n\nSTARTING SIMULATION FOR {num_tasks} TASKS")
                         candidate_sizes = [
                             # max(1, max(int(num_robots * 0.75), int(num_tasks * 0.75))),
-                            max(1, max(int(num_robots * 1.0), int(num_tasks * 1.0))),
+                            # max(1, max(int(num_robots * 1.0), int(num_tasks * 1.0))),
+                            max(1, max(int(num_robots), int(num_tasks)))
                         ]
+                        WORKLOAD = max(1.0, num_tasks / num_robots)
+                        if WORKLOAD > 10:
+                            extender = 1.5
+                        elif WORKLOAD > 5:
+                            extender = 1.2
+                        else:
+                            extender = 1.0
+                        max_time_steps = max(200, int(HYPOTENUSE * 1.5 * extender)) # allow enough time steps for longest path plus some buffer
                         for nc in candidate_sizes:
-                            print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
+                            # print(f"\n\n\nSTARTING SIMULATION FOR {nc} CANDIDATES")
 
                             for sm in suitability_methods:
                                 sm_name = func_name(sm)
-                                print(f"\n\n\nSTARTING SIMULATION FOR SUITABILITY METHOD: {sm_name}")
+                                # print(f"\n\n\nSTARTING SIMULATION FOR SUITABILITY METHOD: {sm_name}")
 
                                 for rep in range(num_repetitions):
                                     print(f"\n\n\nSTARTING SIMULATION REPETITION {rep+1}/{num_repetitions}")
@@ -631,7 +639,7 @@ if __name__ == "__main__":
                                         random_assignment = True
                                         # Voting - random fallback
                                         for method_fn, method_name in zip(voting_methods, voting_names):
-                                            print("All suitability scores are zero, randomly assigning tasks to robots.")
+                                            # print("All suitability scores are zero, randomly assigning tasks to robots.")
                                             output, score, length = V.assign_tasks_randomly(robots, tasks, suitability_matrix, nc)
                                             assigned_count = len(output[0]) if output and output[0] else 0
                                             task_normalized_score = (score / assigned_count) if assigned_count > 0 else 0.0
@@ -704,7 +712,7 @@ if __name__ == "__main__":
                                         outputs = voting_outputs + [cbba_output, ssia_output, ilp_output, jv_output]
 
                                     for idx, (out, meth) in enumerate(zip(outputs, all_methods)):
-                                        print(f"\n\n\nRUNNING SIMULATION FOR METHOD: {meth}")
+                                        # print(f"\n\n\nRUNNING SIMULATION FOR METHOD: {meth}")
                                         output_tuple = benchmark_simulation(
                                             out, copy.deepcopy(robots), copy.deepcopy(tasks), 
                                             nc, meth, grid, map_dict, sm, suitability_matrix, 

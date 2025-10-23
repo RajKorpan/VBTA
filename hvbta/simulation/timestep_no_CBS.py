@@ -65,7 +65,7 @@ def simulate_time_step(
             # If the robot is at the task, increment time on task
             if robot.remaining_distance == 0:
                 required_caps = getattr(task, "required_capabilities", None) or []
-                print(f"Required capabilities {required_caps}")
+                # print(f"Required capabilities {required_caps}")
                 payload_required = None
                 for req in required_caps:
                     if isinstance(req, str) and "payload" in req.lower():
@@ -76,17 +76,17 @@ def simulate_time_step(
                 tools_needed = getattr(task, "tools_needed", None) or []
                 sensors_required = tools_needed[0] if len(tools_needed) > 0 and tools_needed[0] else []
                 manipulators_required = tools_needed[1] if len(tools_needed) > 1 and tools_needed[1] else []
-                print(f"Tools needed {tools_needed}")
-                print(f"Sensors required {sensors_required} Robot sensors {robot.sensors}")
-                print(f"Manipulators required {manipulators_required} Robot Manipulators {robot.manipulators}")
-                print(f"Payload required {payload_required} Robot payload {robot.payload_capacity}")
+                # print(f"Tools needed {tools_needed}")
+                # print(f"Sensors required {sensors_required} Robot sensors {robot.sensors}")
+                # print(f"Manipulators required {manipulators_required} Robot Manipulators {robot.manipulators}")
+                # print(f"Payload required {payload_required} Robot payload {robot.payload_capacity}")
 
                 suitability = getattr(robot, "current_task_suitability", 0.5)
                 if suitability is None:
                     suitability = 0.5
                 
                 suitability = max(0.0, min(1.0, suitability))  # Clamp suitability between 0 and 1
-                print(f"Suitability {suitability}")
+                # print(f"Suitability {suitability}")
                 speed_factor = 0.5 + 1.5 * suitability  # Speed factor between 0.5 (half speed for 0 suitability) and 2.0 (double speed for 1 suitability)
                 #robot.time_on_task += time_step
                 robot.location = task.location  # Ensure robot is at the task location
@@ -114,7 +114,7 @@ def simulate_time_step(
                     rid = robot.robot_id
                     if rid not in unassigned_robots:
                         unassigned_robots.append(rid)
-                    print(f"ROBOT {robot.robot_id} COMPLETED TASK {task.task_id}")
+                    # print(f"ROBOT {robot.robot_id} COMPLETED TASK {task.task_id}")
                     tasks_completed += 1
                     try:
                         tasks.remove(task)
@@ -149,7 +149,7 @@ def simulate_time_step(
                         )
 
                 if payload_required is not None and robot.payload_capacity < payload_required:
-                    print(f"Unassign due to payload triggered.")
+                    # print(f"Unassign due to payload triggered.")
                     unassign_task_from_robot(
                         robot, task, 
                         unassigned_robots=unassigned_robots, 
@@ -158,7 +158,7 @@ def simulate_time_step(
                     continue
                 
                 if sensors_required and not any(sensor in robot.sensors for sensor in sensors_required):
-                    print(f"Unassign due to sensor requirements.")
+                    # print(f"Unassign due to sensor requirements.")
                     unassign_task_from_robot(
                         robot, task, 
                         unassigned_robots=unassigned_robots, 
@@ -167,7 +167,7 @@ def simulate_time_step(
                     continue
 
                 if manipulators_required and not any(tool in robot.manipulators for tool in manipulators_required):
-                    print(f"Unassign due to manipulator requirements.")
+                    # print(f"Unassign due to manipulator requirements.")
                     unassign_task_from_robot(
                         robot, task,
                         unassigned_robots=unassigned_robots,
