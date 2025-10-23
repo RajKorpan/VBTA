@@ -517,9 +517,9 @@ if __name__ == "__main__":
         # ]
         # map_paths = [
         #     r"den020d.map", # 118 x 89
-        #     r"den201d.map", # 37  x 37
-        #     r"arena.map",   # 49  x 49
-        #     r"den204d.map", # 66  x 66
+        #     # r"den201d.map", # 37  x 37
+        #     # r"arena.map",   # 49  x 49
+        #     # r"den204d.map", # 66  x 66
         # ]
         
         # max_time_steps = 500
@@ -584,6 +584,7 @@ if __name__ == "__main__":
                         candidate_sizes = [
                             # max(1, max(int(num_robots * 0.75), int(num_tasks * 0.75))),
                             # max(1, max(int(num_robots * 1.0), int(num_tasks * 1.0))),
+                            # max(1, min(max(int(num_robots), int(num_tasks)), 75))
                             max(1, max(int(num_robots), int(num_tasks)))
                         ]
                         WORKLOAD = max(1.0, num_tasks / num_robots)

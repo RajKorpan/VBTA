@@ -17,6 +17,37 @@ ScoreFn = Callable[[CapabilityProfile, TaskDescription], float]
 def suitability_all_zero(suitability_matrix):
     return all(value == 0 for row in suitability_matrix for value in row)
 
+def _split_tool_requirements(tools_needed):
+    """
+    Normalise TaskDescription.tools_needed into:
+      - sensors: flat list of sensor ids
+      - manipulator_groups: list of AND-requirement groups, each a list of tool ids
+
+    Supports both the legacy flat list (['LiDAR', 'camera', ...]) and the newer
+    [[sensors...], [manipulator group], ...] format used by strict profiles.
+    """
+    if not tools_needed:
+        return [], []
+
+    # Canonical case: [[sensor list], [manip group], ...]
+    if isinstance(tools_needed, (list, tuple)) and tools_needed:
+        first = tools_needed[0]
+        if isinstance(first, (list, tuple)):
+            sensors = [str(tool) for tool in first if tool]
+            manip_groups = [
+                [str(tool) for tool in group if tool]
+                for group in tools_needed[1:]
+                if isinstance(group, (list, tuple)) and group
+            ]
+            return sensors, manip_groups
+
+        # Legacy case: flat list of sensor strings
+        if all(isinstance(item, str) for item in tools_needed):
+            return [str(item) for item in tools_needed if item], []
+
+    # Fallback – treat anything string-ish as a sensor requirement
+    return [str(item) for item in tools_needed if isinstance(item, str)], []
+
 def navigation_suitability(robot_mobility_type: str, robot_size: Tuple[float, float, float], task_constraints: List[str]) -> float:
     """
     Evaluates the suitability of a robot for navigating a task environment based on mobility type, size, and navigation constraints.
@@ -187,50 +218,72 @@ def evaluate_suitability_new(robot: CapabilityProfile, task: TaskDescription) ->
     else:
         score += weights["reach"]
 
-    # Manipulators (tools_needed[1] is manipulators list)
-    # Check if there are any tool requirements for the task
-    if task.tools_needed:
-        # A tool requirement exists, so add its weight to the total possible score
-        total_weight += weights["manipulators"]
-        
-        group_scores = []
-        # Iterate through each required tool group (the "AND" part)
-        for required_group in task.tools_needed:
-            # Skip any malformed or empty tool groups
-            if not required_group:
-                continue
-
-            # 1. First, check for basic suitability (the "OR" part)
-            #    Does the robot have at least one of the tools in this group?
-            if not any(tool in robot.manipulators for tool in required_group):
-                return 0.0  # If any AND group is not met, the robot is unsuitable.
-
-            # 2. If suitable, then calculate the scalar score for this group
-            #    This measures redundancy/completeness.
-            matched_count = sum(tool in robot.manipulators for tool in required_group)
-            group_score = matched_count / len(required_group)
-            group_scores.append(group_score)
-
-        # 3. If the loop completed, all groups were satisfied.
-        #    Average the scores of all groups to get the final tool_score.
-        if group_scores:
-            tool_score = sum(group_scores) / len(group_scores)
-            score += weights["manipulators"] * tool_score
+    # # Manipulators (tools_needed[1] is manipulators list)
+    # # Check if there are any tool requirements for the task
     # if task.tools_needed:
-    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-    #         task.tools_needed[1].remove("cable hoist")
-        # matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-        # tool_score = matched_tools / len(task.tools_needed[1])
-        # if tool_score != 1:
-        #     return 0.0
-        # score += weights["manipulators"] * tool_score
+    #     # A tool requirement exists, so add its weight to the total possible score
+    #     total_weight += weights["manipulators"]
+        
+    #     group_scores = []
+    #     # Iterate through each required tool group (the "AND" part)
+    #     for required_group in task.tools_needed:
+    #         # Skip any malformed or empty tool groups
+    #         if not required_group:
+    #             continue
 
-    # Sensors (tools_needed[0] is sensors list)
-    total_weight += weights["sensors"]
-    if task.tools_needed:
-        matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
-        tool_score = matched_tools / len(task.tools_needed[0])
-        score += weights["sensors"] * tool_score
+    #         # 1. First, check for basic suitability (the "OR" part)
+    #         #    Does the robot have at least one of the tools in this group?
+    #         if not any(tool in robot.manipulators for tool in required_group):
+    #             return 0.0  # If any AND group is not met, the robot is unsuitable.
+
+    #         # 2. If suitable, then calculate the scalar score for this group
+    #         #    This measures redundancy/completeness.
+    #         matched_count = sum(tool in robot.manipulators for tool in required_group)
+    #         group_score = matched_count / len(required_group)
+    #         group_scores.append(group_score)
+
+    #     # 3. If the loop completed, all groups were satisfied.
+    #     #    Average the scores of all groups to get the final tool_score.
+    #     if group_scores:
+    #         tool_score = sum(group_scores) / len(group_scores)
+    #         score += weights["manipulators"] * tool_score
+    # # if task.tools_needed:
+    # #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    # #         task.tools_needed[1].remove("cable hoist")
+    #     # matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+    #     # tool_score = matched_tools / len(task.tools_needed[1])
+    #     # if tool_score != 1:
+    #     #     return 0.0
+    #     # score += weights["manipulators"] * tool_score
+
+    # # Sensors (tools_needed[0] is sensors list)
+    # total_weight += weights["sensors"]
+    # if task.tools_needed:
+    #     matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
+    #     tool_score = matched_tools / len(task.tools_needed[0])
+    #     score += weights["sensors"] * tool_score
+
+    sensor_requirements, manipulator_groups = _split_tool_requirements(task.tools_needed)
+
+    # Manipulators – every AND-group must be satisfied by at least one manipulator the robot carries
+    if manipulator_groups:
+        total_weight += weights["manipulators"]
+        group_scores = []
+        robot_manips = set(robot.manipulators or [])
+        for required_group in manipulator_groups:
+            if not any(tool in robot_manips for tool in required_group):
+                return 0.0  # hard requirement missing
+            matched = sum(tool in robot_manips for tool in required_group)
+            group_scores.append(matched / len(required_group))
+        if group_scores:
+            score += weights["manipulators"] * (sum(group_scores) / len(group_scores))
+
+    # Sensors – treat legacy flat lists as pure sensor requirements
+    if sensor_requirements:
+        total_weight += weights["sensors"]
+        robot_sensors = set(robot.sensors or [])
+        matched = sum(tool in robot_sensors for tool in sensor_requirements)
+        score += weights["sensors"] * (matched / len(sensor_requirements))
 
     # Communication 
     total_weight += weights["communication"]
@@ -396,44 +449,66 @@ def evaluate_suitability_loose(robot: CapabilityProfile, task: TaskDescription) 
     else:
         score += weights["reach"]
 
-    # Manipulators (tools_needed[1] is manipulators list)
-    # Manipulators
-    if task.tools_needed:
-        total_weight += weights["manipulators"]
-        
-        group_scores = []
-        # Iterate through each required tool group (the "AND" part)
-        for required_group in task.tools_needed:
-            if not required_group:
-                continue
-
-            # 1. First, check if the robot has at least one tool for this group (the "OR" part)
-            if not any(tool in robot.manipulators for tool in required_group):
-                return 0.0  # If any AND group is not met, the robot is unsuitable.
-
-            # 2. If the group is met, calculate the scalar score for redundancy
-            matched_count = sum(tool in robot.manipulators for tool in required_group)
-            group_score = matched_count / len(required_group)
-            group_scores.append(group_score)
-
-        # 3. If the loop completed, average the scores to get the final tool_score
-        if group_scores:
-            tool_score = sum(group_scores) / len(group_scores)
-            score += weights["manipulators"] * tool_score
-    # total_weight += weights["manipulators"]
+    # # Manipulators (tools_needed[1] is manipulators list)
+    # # Manipulators
     # if task.tools_needed:
-    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-    #         task.tools_needed[1].remove("cable hoist")
-    #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-    #     tool_score = matched_tools / len(task.tools_needed[1])
-    #     score += weights["manipulators"] * tool_score
+    #     total_weight += weights["manipulators"]
+        
+    #     group_scores = []
+    #     # Iterate through each required tool group (the "AND" part)
+    #     for required_group in task.tools_needed:
+    #         if not required_group:
+    #             continue
 
-    # Sensors (tools_needed[0] is sensors list)
-    total_weight += weights["sensors"]
-    if task.tools_needed:
-        matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
-        tool_score = matched_tools / len(task.tools_needed[0])
-        score += weights["sensors"] * tool_score
+    #         # 1. First, check if the robot has at least one tool for this group (the "OR" part)
+    #         if not any(tool in robot.manipulators for tool in required_group):
+    #             return 0.0  # If any AND group is not met, the robot is unsuitable.
+
+    #         # 2. If the group is met, calculate the scalar score for redundancy
+    #         matched_count = sum(tool in robot.manipulators for tool in required_group)
+    #         group_score = matched_count / len(required_group)
+    #         group_scores.append(group_score)
+
+    #     # 3. If the loop completed, average the scores to get the final tool_score
+    #     if group_scores:
+    #         tool_score = sum(group_scores) / len(group_scores)
+    #         score += weights["manipulators"] * tool_score
+    # # total_weight += weights["manipulators"]
+    # # if task.tools_needed:
+    # #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    # #         task.tools_needed[1].remove("cable hoist")
+    # #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+    # #     tool_score = matched_tools / len(task.tools_needed[1])
+    # #     score += weights["manipulators"] * tool_score
+
+    # # Sensors (tools_needed[0] is sensors list)
+    # total_weight += weights["sensors"]
+    # if task.tools_needed:
+    #     matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
+    #     tool_score = matched_tools / len(task.tools_needed[0])
+    #     score += weights["sensors"] * tool_score
+
+    sensor_requirements, manipulator_groups = _split_tool_requirements(task.tools_needed)
+
+    # Manipulators – every AND-group must be satisfied by at least one manipulator the robot carries
+    if manipulator_groups:
+        total_weight += weights["manipulators"]
+        group_scores = []
+        robot_manips = set(robot.manipulators or [])
+        for required_group in manipulator_groups:
+            if not any(tool in robot_manips for tool in required_group):
+                score += 0.0  # hard requirement missing
+            matched = sum(tool in robot_manips for tool in required_group)
+            group_scores.append(matched / len(required_group))
+        if group_scores:
+            score += weights["manipulators"] * (sum(group_scores) / len(group_scores))
+
+    # Sensors – treat legacy flat lists as pure sensor requirements
+    if sensor_requirements:
+        total_weight += weights["sensors"]
+        robot_sensors = set(robot.sensors or [])
+        matched = sum(tool in robot_sensors for tool in sensor_requirements)
+        score += weights["sensors"] * (matched / len(sensor_requirements))
 
     # Communication
     total_weight += weights["communication"]
@@ -599,41 +674,63 @@ def evaluate_suitability_strict(robot: CapabilityProfile, task: TaskDescription)
     else:
         score += weights["reach"]
 
-    # Manipulators (tools_needed[1] is manipulators list)
-    # Manipulators
-    if task.tools_needed:
-        total_weight += weights["manipulators"]
-        
-        # Iterate through each required tool group (the "AND" part)
-        for required_group in task.tools_needed:
-            # Check if the robot has at least one tool from the current group (the "OR" part)
-            has_matching_tool = any(tool in robot.manipulators for tool in required_group)
-            
-            # If a required group is not satisfied, the robot is completely unsuitable.
-            if not has_matching_tool:
-                return 0.0 # Exit immediately with a score of 0
-
-        # If the loop completes, it means all tool groups were satisfied.
-        # Award the full score for this category.
-        score += weights["manipulators"]
-    # total_weight += weights["manipulators"]
+    # # Manipulators (tools_needed[1] is manipulators list)
+    # # Manipulators
     # if task.tools_needed:
-    #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
-    #         task.tools_needed[1].remove("cable hoist")
-    #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
-    #     tool_score = matched_tools / len(task.tools_needed[1])
+    #     total_weight += weights["manipulators"]
+        
+    #     # Iterate through each required tool group (the "AND" part)
+    #     for required_group in task.tools_needed:
+    #         # Check if the robot has at least one tool from the current group (the "OR" part)
+    #         has_matching_tool = any(tool in robot.manipulators for tool in required_group)
+            
+    #         # If a required group is not satisfied, the robot is completely unsuitable.
+    #         if not has_matching_tool:
+    #             return 0.0 # Exit immediately with a score of 0
+
+    #     # If the loop completes, it means all tool groups were satisfied.
+    #     # Award the full score for this category.
+    #     score += weights["manipulators"]
+    # # total_weight += weights["manipulators"]
+    # # if task.tools_needed:
+    # #     if ("cable hoist" in task.tools_needed[1] and "cable hoist" not in robot.manipulators and robot.mobility_type in ["hovering", "aerial"]):
+    # #         task.tools_needed[1].remove("cable hoist")
+    # #     matched_tools = sum(tool in robot.manipulators for tool in task.tools_needed[1])
+    # #     tool_score = matched_tools / len(task.tools_needed[1])
+    # #     if tool_score != 1:
+    # #         return 0.0
+    # #     score += weights["manipulators"] * tool_score
+
+    # # Sensors (tools_needed[0] is sensors list)
+    # total_weight += weights["sensors"]
+    # if task.tools_needed:
+    #     matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
+    #     tool_score = matched_tools / len(task.tools_needed[0])
     #     if tool_score != 1:
     #         return 0.0
-    #     score += weights["manipulators"] * tool_score
+    #     score += weights["sensors"] * tool_score
 
-    # Sensors (tools_needed[0] is sensors list)
-    total_weight += weights["sensors"]
-    if task.tools_needed:
-        matched_tools = sum(tool in robot.sensors for tool in task.tools_needed[0])
-        tool_score = matched_tools / len(task.tools_needed[0])
-        if tool_score != 1:
-            return 0.0
-        score += weights["sensors"] * tool_score
+    sensor_requirements, manipulator_groups = _split_tool_requirements(task.tools_needed)
+
+    # Manipulators – every AND-group must be satisfied by at least one manipulator the robot carries
+    if manipulator_groups:
+        total_weight += weights["manipulators"]
+        group_scores = []
+        robot_manips = set(robot.manipulators or [])
+        for required_group in manipulator_groups:
+            if not any(tool in robot_manips for tool in required_group):
+                return 0.0  # hard requirement missing
+            matched = sum(tool in robot_manips for tool in required_group)
+            group_scores.append(matched / len(required_group))
+        if group_scores:
+            score += weights["manipulators"] * (sum(group_scores) / len(group_scores))
+
+    # Sensors – treat legacy flat lists as pure sensor requirements
+    if sensor_requirements:
+        total_weight += weights["sensors"]
+        robot_sensors = set(robot.sensors or [])
+        matched = sum(tool in robot_sensors for tool in sensor_requirements)
+        score += weights["sensors"] * (matched / len(sensor_requirements))
 
     # Communication
     total_weight += weights["communication"]

@@ -157,14 +157,14 @@ def simulate_time_step(
                     )
                     continue
                 
-                if sensors_required and not any(sensor in robot.sensors for sensor in sensors_required):
-                    # print(f"Unassign due to sensor requirements.")
-                    unassign_task_from_robot(
-                        robot, task, 
-                        unassigned_robots=unassigned_robots, 
-                        unassigned_tasks=unassigned_tasks
-                    )
-                    continue
+                # if sensors_required and not any(sensor in robot.sensors for sensor in sensors_required):
+                #     # print(f"Unassign due to sensor requirements.")
+                #     unassign_task_from_robot(
+                #         robot, task, 
+                #         unassigned_robots=unassigned_robots, 
+                #         unassigned_tasks=unassigned_tasks
+                #     )
+                #     continue
 
                 if manipulators_required and not any(tool in robot.manipulators for tool in manipulators_required):
                     # print(f"Unassign due to manipulator requirements.")
