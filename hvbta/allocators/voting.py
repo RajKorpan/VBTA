@@ -302,13 +302,43 @@ def assign_tasks_with_voting(robots: List[CapabilityProfile], tasks: List[TaskDe
         best_ranking = 0
 
     best_assignment = random_assignments[assignment_ranking[best_ranking]]
-    filtered_best_assignments = ([],[],[])
-    for robot_id, task_id in best_assignment[0]:
-            if suitability_matrix[robot_id][task_id] == 0:
-                filtered_best_assignments[1].append(robot_id)
-                filtered_best_assignments[2].append(task_id)
+    assigned_pairs = list(best_assignment[0])
+    unassigned_robots = list(best_assignment[1] or [])
+    unassigned_tasks = list(best_assignment[2] or [])
+
+    has_positive = any(suitability_matrix[r][t] > 0 for r, t in assigned_pairs)
+    if has_positive:
+        kept_pairs = []
+        for r, t in assigned_pairs:
+            if suitability_matrix[r][t] > 0:
+                kept_pairs.append((r, t))
             else:
-                filtered_best_assignments[0].append((robot_id, task_id))
+                if r not in unassigned_robots:
+                    unassigned_robots.append(r)
+                if t not in unassigned_tasks:
+                    unassigned_tasks.append(t)
+        assigned_pairs = kept_pairs
+    else:
+        # All pairs scored 0 – keep the random assignment so the simulator has work to do.
+        if best_assignment[1] is None:
+            assigned_ids = {r for r, _ in assigned_pairs}
+            unassigned_robots = [idx for idx in range(num_robots) if idx not in assigned_ids]
+        if best_assignment[2] is None:
+            assigned_task_ids = {t for _, t in assigned_pairs}
+            unassigned_tasks = [idx for idx in range(num_tasks) if idx not in assigned_task_ids]
+
+    filtered_best_assignments = (
+        assigned_pairs,
+        unassigned_robots,
+        unassigned_tasks,
+    )
+    # filtered_best_assignments = ([],[],[])
+    # for robot_id, task_id in best_assignment[0]:
+    #         if suitability_matrix[robot_id][task_id] == 0:
+    #             filtered_best_assignments[1].append(robot_id)
+    #             filtered_best_assignments[2].append(task_id)
+    #         else:
+    #             filtered_best_assignments[0].append((robot_id, task_id))
     print(f"Best assignment in voting {filtered_best_assignments}")
 
     best_score = calculate_total_suitability(filtered_best_assignments[0], suitability_matrix)

@@ -426,7 +426,7 @@ def benchmark_simulation(
     cpu_usage = psutil.cpu_percent()
     memory_usage = psutil.virtual_memory().used
 
-    print(f"Simulation completed in {execution_time:.5f} seconds.")
+    print(f"Simulation completed in {execution_time:.5f} nanoseconds.")
     print(f"CPU Usage: {cpu_usage}%")
     print(f"Memory Usage: {memory_usage / (1024 * 1024)} MB")
 
