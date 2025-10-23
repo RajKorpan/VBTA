@@ -4,9 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import List, Tuple, Callable, Union
 from openai import OpenAI
-from prompt_toolkit import prompt
+# from prompt_toolkit import prompt
 from .models import CapabilityProfile, TaskDescription
-from inspect import signature, Parameter
+# from inspect import signature, Parameter
 from enum import Enum
 from dataclasses import is_dataclass, asdict
 
