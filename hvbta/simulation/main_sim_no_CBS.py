@@ -499,7 +499,7 @@ if __name__ == "__main__":
             r"ost002d.map", # 145 x 181
         ]
         map_paths = (
-        random.sample(small_maps, 7) +
+        # random.sample(small_maps, 7) +
         random.sample(medium_maps, 7) +
         random.sample(large_maps, 7)
         )
